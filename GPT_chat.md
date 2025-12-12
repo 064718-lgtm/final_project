@@ -32,3 +32,4 @@
 16) User: README è¦é¡¯ç¤ºæ¨¡å‹æº–ç¢ºç‡æˆ–æ··æ·†çŸ©é™£ã€‚  
     Assistant: README å¢è£œ CNN/VGG16 é©—è­‰ Accuracy èˆ‡æ··æ·†çŸ©é™£ç¤ºæ„ã€‚
 27. User: UI need "A calm, eye-friendly eco-tech AI dashboard UI with soft pastel colors...". Assistant: §ó·s Streamlit CSS¡G¬X©M·x¥Õ­I´º¡B¯»±mºñÂÅÂIºó¡B¶ê¨¤¥d¤ù¡B§C¹ï¤ñ¦rÅé¡A²Å¦Xªø®É¶¡¾\Åªªº¬ì¾Ç·P¥DÃD¡C
+28. User: ­n²¾°£¸ê®Æ¶°¡B§ó·s README «ü©w Kaggle ¤U¸ü³sµ²»P©ñ¸m¸ô®|¡A¨ÃÁ×§K±À°e¸ê®Æ¶°¡F¦P®É­n¨D¨ó§U git push¡C Assistant: ·s¼W .gitignore (©¿²¤ train/test/zip/DEMO/¼Ò«¬)¡A­«¼g README¡]§t¤U¸ü³sµ²»P©ñ¸m¤è¦¡¡^¡A´£¿ô¸ê®Æ¶°¤Å¤J®w¡F»¡©úµLªk¥N¬°±À°e¡A»İ¥Î¤á¦Û¦æ¾Ş§@¾ÌÃÒ»P push¡C

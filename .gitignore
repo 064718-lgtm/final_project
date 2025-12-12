@@ -1,0 +1,10 @@
+# Data and large artifacts (do not commit datasets or model weights)
+train/
+test/
+train.zip
+test.zip
+train_full/
+data/
+*.ckpt
+*.pb
+*.bin
