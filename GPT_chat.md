@@ -33,3 +33,7 @@
     Assistant: 新增 .gitignore（忽略 train/test/zip/DEMO/模型等），重寫 README 資料集段落與 Kaggle 連結；提醒資料集勿入庫。
 17) User: UI 需符合「A calm, eye-friendly eco-tech AI dashboard」風格。
     Assistant: 更新 Streamlit CSS：暖白背景、粉彩綠藍點綴、圓角卡片、柔和陰影、低對比文字。
+18) User: README 需加入 UI_demo0/1 圖示展示 Streamlit 預測。
+    Assistant: 在 README 嵌入 UI_demo0.png、UI_demo1.png，並推送圖片與說明。
+19) User: UI 判讀邏輯修正（偵測到＝氣候壓力暫不嚴重；未偵測到＝氣候警示）。
+    Assistant: 更新 streamlit_app 判讀提示與 README 說明，並推送更新。
