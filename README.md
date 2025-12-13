@@ -37,6 +37,7 @@ streamlit run streamlit_app.py
 ```
 - 側邊欄：選擇 `outputs/*.keras` 模型、選 DEMO 影像或上傳 JPG/PNG、調整閾值。
 - 結果：顯示仙人掌機率與判定、Grad-CAM 熱力圖覆蓋、暖化風險提示。
+- 判讀：偵測到仙人掌 → 環境壓力暫不嚴重；未檢測到 → 觸發氣候變遷警示並建議檢查灌溉/植被。
 - 介面風格：柔和粉彩、暖白背景的 eco-tech 儀表板，適合長時間閱讀。
 
 ### Streamlit 預測結果示意
