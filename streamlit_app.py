@@ -337,13 +337,13 @@ def main() -> None:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         if has_cactus:
             st.markdown(
-                "**根據這個空排結果圖，模型判定有仙人掌存在。** "
+                "**根據這個空拍結果圖，模型判定有仙人掌存在。** "
                 "後台分析顯示在此影像區域，氣候暖化的趨勢可能加劇乾旱環境，"
                 "請留意生態變化並持續監測水資源與植被變化。"
             )
         else:
             st.markdown(
-                "根據這個空排結果圖，**未檢測到仙人掌。** "
+                "根據這個空拍結果圖，**未檢測到仙人掌。** "
                 "若需更精細的結果，可提供更高解析度或不同角度的影像。"
             )
         st.markdown("</div>", unsafe_allow_html=True)
