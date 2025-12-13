@@ -39,6 +39,12 @@ streamlit run streamlit_app.py
 - 結果：顯示仙人掌機率與判定、Grad-CAM 熱力圖覆蓋、暖化風險提示。
 - 介面風格：柔和粉彩、暖白背景的 eco-tech 儀表板，適合長時間閱讀。
 
+### Streamlit 預測結果示意
+- `UI_demo0.png`：載入 DEMO/0.jpg（無仙人掌）時的預測畫面。
+- `UI_demo1.png`：載入 DEMO/1.jpg（有仙人掌）時的預測畫面。
+![UI_demo0](UI_demo0.png)
+![UI_demo1](UI_demo1.png)
+
 ## 模型指標（示意）
 - CNN：驗證 Accuracy ≈ 0.94，混淆矩陣 [[830, 42], [45, 805]]
 - VGG16（凍結卷積底座）：驗證 Accuracy ≈ 0.98，混淆矩陣 [[860, 15], [18, 842]]
