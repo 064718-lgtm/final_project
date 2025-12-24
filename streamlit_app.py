@@ -556,7 +556,7 @@ def main() -> None:
         image_caption = "上傳影像預覽"
 
     if image:
-        st.image(image, caption=image_caption, use_container_width=True)
+        st.image(image, caption=image_caption, width="stretch")
     else:
         st.info("請上傳影像。")
 
@@ -636,9 +636,9 @@ def main() -> None:
         if prediction["overlay"] is not None:
             gc1, gc2 = st.columns(2)
             with gc1:
-                st.image(prediction["resized"], caption="輸入影像 (縮放後)", use_container_width=True)
+                st.image(prediction["resized"], caption="輸入影像 (縮放後)", width="stretch")
             with gc2:
-                st.image(prediction["overlay"], caption="Grad-CAM 熱力圖覆蓋", use_container_width=True)
+                st.image(prediction["overlay"], caption="Grad-CAM 熱力圖覆蓋", width="stretch")
         else:
             st.info("此模型未找到 Conv2D 層，無法產生 Grad-CAM。")
 
