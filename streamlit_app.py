@@ -55,6 +55,15 @@ def build_custom_objects() -> dict:
     return custom
 
 
+@cache_resource_compat(
+    show_spinner=False,
+    hash_funcs={
+        Path: lambda p: (str(p), p.stat().st_mtime_ns, p.stat().st_size)
+        if p.exists()
+        else (str(p), None, None)
+    },
+    allow_output_mutation=True,
+)
 def load_model(model_path: Path) -> tf.keras.Model:
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found at {model_path}")
@@ -579,11 +588,12 @@ def main() -> None:
         if not model_path.exists():
             st.error(f"找不到模型檔：{model_path}")
             st.stop()
-        try:
-            model = load_model(model_path)
-        except Exception as e:
-            st.error(f"模型載入失敗：{e}")
-            st.stop()
+        with st.spinner("模型載入中..."):
+            try:
+                model = load_model(model_path)
+            except Exception as e:
+                st.error(f"模型載入失敗：{e}")
+                st.stop()
 
         with st.spinner("模型推論中..."):
             prob = predict(image, model)

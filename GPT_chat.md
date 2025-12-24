@@ -97,3 +97,5 @@ Q39: Streamlit 提示 use_column_width 已棄用。
 A39: 已改為 use_container_width。
 Q40: Streamlit 提示 use_container_width 即將棄用。
 A40: 已改為 width="stretch" 以符合新介面。
+Q41: 上傳影像後功能卡住。
+A41: 已將模型載入加入快取，並顯示「模型載入中」提示以避免卡住感。
