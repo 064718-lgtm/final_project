@@ -30,6 +30,8 @@ IMAGE_SIZE = (96, 96)
 DEFAULT_THRESHOLD = 0.5
 LOCAL_LLM_MODEL_ID = "uer/gpt2-chinese-cluecorpussmall"
 HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
+ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
+LFS_SIGNATURE = b"version https://git-lfs.github.com/spec/v1"
 
 
 def cache_resource_compat(**kwargs):
@@ -115,7 +117,16 @@ def load_model(model_path: Path) -> tf.keras.Model:
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found at {model_path}")
     custom_objects = build_custom_objects()
-    resolved_path = resolve_hdf5_path(model_path)
+    file_type = detect_model_file_type(model_path)
+    if file_type == "lfs":
+        raise ValueError("模型檔看起來是 Git LFS 指標，請用 git lfs pull 或重新上傳實體模型檔。")
+    if file_type == "unknown":
+        raise ValueError("模型檔格式無法辨識，請確認檔案未損毀並重新輸出為 .h5/.keras。")
+    if file_type == "hdf5":
+        resolved_path = resolve_hdf5_path(model_path)
+    else:
+        resolved_path = model_path
+
     try:
         return tf.keras.models.load_model(
             resolved_path,
@@ -123,31 +134,16 @@ def load_model(model_path: Path) -> tf.keras.Model:
             custom_objects=custom_objects,
             safe_mode=False,
         )
-    except ValueError:
-        if resolved_path != model_path:
-            raise
-        if model_path.suffix.lower() == ".keras" and is_hdf5_file(model_path):
-            h5_path = coerce_hdf5_path(model_path)
-            try:
-                return tf.keras.models.load_model(
-                    h5_path,
-                    compile=False,
-                    custom_objects=custom_objects,
-                    safe_mode=False,
-                )
-            except TypeError:
-                return tf.keras.models.load_model(
-                    h5_path,
-                    compile=False,
-                    custom_objects=custom_objects,
-                )
-        raise
     except TypeError:
         return tf.keras.models.load_model(
             resolved_path,
             compile=False,
             custom_objects=custom_objects,
         )
+    except Exception as e:
+        if file_type == "zip":
+            raise ValueError(f"無法載入 .keras (zip) 模型，請確認 TensorFlow 版本或改存 .h5：{e}") from e
+        raise
 
 
 def load_model_by_weights(model_path: Path) -> tf.keras.Model:
@@ -159,6 +155,9 @@ def load_model_by_weights(model_path: Path) -> tf.keras.Model:
         model = build_cnn_infer(input_shape)
     else:
         raise ValueError("Unsupported model name for weight loading.")
+    file_type = detect_model_file_type(model_path)
+    if file_type != "hdf5":
+        raise ValueError(f"weights-only load requires HDF5, got {file_type}")
     resolved_path = resolve_hdf5_path(model_path)
     try:
         model.load_weights(resolved_path)
@@ -177,9 +176,10 @@ def get_cached_model(model_path: Path) -> tf.keras.Model:
     entry = cache.get(key)
     if entry and entry.get("meta") == meta:
         return entry["model"]
+    file_type = detect_model_file_type(model_path)
     start = time.perf_counter()
     try:
-        print(f"[model] loading by weights: {model_path}")
+        print(f"[model] loading by weights ({file_type}): {model_path}")
         model = load_model_by_weights(model_path)
         method = "weights"
     except Exception as e:
@@ -187,7 +187,7 @@ def get_cached_model(model_path: Path) -> tf.keras.Model:
         model = load_model(model_path)
         method = "full"
     elapsed = time.perf_counter() - start
-    st.session_state["model_load_info"] = f"{method} load {elapsed:.2f}s"
+    st.session_state["model_load_info"] = f"{method} load {elapsed:.2f}s / {file_type}"
     cache[key] = {"meta": meta, "model": model}
     st.session_state["model_cache"] = cache
     return model
@@ -215,6 +215,32 @@ def looks_like_hdf5(model_path: Path) -> bool:
             return handle.read(len(HDF5_SIGNATURE)) == HDF5_SIGNATURE
     except OSError:
         return False
+
+
+def detect_model_file_type(model_path: Path) -> str:
+    if model_path.is_dir():
+        return "saved_model"
+    if not model_path.exists():
+        return "missing"
+    try:
+        with model_path.open("rb") as handle:
+            head = handle.read(256)
+    except OSError:
+        return "missing"
+    if head.startswith(LFS_SIGNATURE):
+        return "lfs"
+    if head.startswith(HDF5_SIGNATURE):
+        return "hdf5"
+    if any(head.startswith(sig) for sig in ZIP_SIGNATURES):
+        return "zip"
+    try:
+        if zipfile.is_zipfile(model_path):
+            return "zip"
+    except OSError:
+        pass
+    if is_hdf5_file(model_path):
+        return "hdf5"
+    return "unknown"
 
 
 def is_hdf5_file(model_path: Path) -> bool:
@@ -639,6 +665,14 @@ def main() -> None:
             model_path = save_uploaded_model(uploaded_model)
         elif model_select:
             model_path = Path(model_select)
+        if model_path and model_path.exists():
+            model_type = detect_model_file_type(model_path)
+            size_mb = model_path.stat().st_size / (1024 * 1024)
+            st.caption(f"模型檔資訊：{model_type} / {size_mb:.2f} MB")
+            if model_type == "lfs":
+                st.warning("偵測到 Git LFS 指標，請用 git lfs pull 或重新上傳模型檔。")
+            elif model_type == "unknown":
+                st.warning("模型檔格式無法辨識，可能已損毀，建議重新匯出或更換檔案。")
         load_info = st.session_state.get("model_load_info")
         if load_info:
             st.caption(f"上次載入：{load_info}")
