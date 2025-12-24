@@ -103,3 +103,5 @@ Q42: 推論卡住。
 A42: 已將 Grad-CAM 改為可選項，預設關閉，避免推論被 Grad-CAM 拖慢。
 Q43: 模型載入卡住。
 A43: 已移除舊版 Streamlit 的 st.cache，改用 session_state 快取模型與 LLM。
+Q44: CNN 模型載入仍卡住。
+A44: 已改優先用架構 + load_weights 載入 CNN/VGG16，避免完整反序列化卡住。

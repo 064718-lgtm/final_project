@@ -57,6 +57,49 @@ def build_custom_objects() -> dict:
     return custom
 
 
+def build_augmentation_layer() -> tf.keras.Sequential:
+    return tf.keras.Sequential(
+        [
+            tf.keras.layers.RandomFlip("horizontal"),
+            tf.keras.layers.RandomRotation(0.1),
+            tf.keras.layers.RandomZoom(0.1),
+        ],
+        name="data_augmentation",
+    )
+
+
+def build_cnn_infer(input_shape: tuple[int, int, int]) -> tf.keras.Model:
+    aug = build_augmentation_layer()
+    inputs = tf.keras.layers.Input(shape=input_shape)
+    x = aug(inputs)
+    x = tf.keras.layers.Rescaling(1.0 / 255.0)(x)
+    x = tf.keras.layers.Conv2D(32, 3, padding="same", activation="relu")(x)
+    x = tf.keras.layers.MaxPooling2D()(x)
+    x = tf.keras.layers.Conv2D(64, 3, padding="same", activation="relu")(x)
+    x = tf.keras.layers.MaxPooling2D()(x)
+    x = tf.keras.layers.Conv2D(128, 3, padding="same", activation="relu")(x)
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    x = tf.keras.layers.Dropout(0.3)(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
+    return tf.keras.models.Model(inputs, outputs, name="simple_cnn")
+
+
+def build_vgg16_infer(input_shape: tuple[int, int, int]) -> tf.keras.Model:
+    aug = build_augmentation_layer()
+    base = tf.keras.applications.VGG16(
+        include_top=False, weights=None, input_shape=input_shape
+    )
+    base.trainable = False
+    inputs = tf.keras.layers.Input(shape=input_shape)
+    x = aug(inputs)
+    x = tf.keras.applications.vgg16.preprocess_input(x)
+    x = base(x, training=False)
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    x = tf.keras.layers.Dropout(0.4)(x)
+    outputs = tf.keras.layers.Dense(1, activation="sigmoid")(x)
+    return tf.keras.models.Model(inputs, outputs, name="vgg16_transfer")
+
+
 @cache_resource_compat(
     show_spinner=False,
     hash_funcs={
@@ -102,6 +145,19 @@ def load_model(model_path: Path) -> tf.keras.Model:
         )
 
 
+def load_model_by_weights(model_path: Path) -> tf.keras.Model:
+    name = model_path.name.lower()
+    input_shape = (IMAGE_SIZE[0], IMAGE_SIZE[1], 3)
+    if "vgg" in name:
+        model = build_vgg16_infer(input_shape)
+    elif "cnn" in name:
+        model = build_cnn_infer(input_shape)
+    else:
+        raise ValueError("Unsupported model name for weight loading.")
+    model.load_weights(model_path)
+    return model
+
+
 def get_cached_model(model_path: Path) -> tf.keras.Model:
     cache = st.session_state.get("model_cache", {})
     key = str(model_path)
@@ -112,7 +168,10 @@ def get_cached_model(model_path: Path) -> tf.keras.Model:
     entry = cache.get(key)
     if entry and entry.get("meta") == meta:
         return entry["model"]
-    model = load_model(model_path)
+    try:
+        model = load_model_by_weights(model_path)
+    except Exception:
+        model = load_model(model_path)
     cache[key] = {"meta": meta, "model": model}
     st.session_state["model_cache"] = cache
     return model
