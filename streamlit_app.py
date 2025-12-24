@@ -349,19 +349,20 @@ def main() -> None:
     st.markdown("### 上傳影像")
     st.caption("支援 JPG/PNG，建議使用清晰、光線充足的空拍視角。")
     uploaded = st.file_uploader("選擇一張影像", type=["jpg", "jpeg", "png"])
+    use_demo = sample_choice and sample_choice != "(上傳自選)"
 
     image = None
     image_caption = ""
-    if uploaded:
-        image = Image.open(io.BytesIO(uploaded.read()))
-        image_caption = "上傳影像預覽"
-    elif sample_choice and sample_choice != "(上傳自選)":
+    if use_demo:
         sample_bytes = load_demo_image(sample_choice)
         if sample_bytes:
             image = Image.open(io.BytesIO(sample_bytes))
             image_caption = f"範例影像：{sample_choice}"
         else:
             st.warning("找不到 DEMO 範例影像，請確認 DEMO/0.jpg 與 DEMO/1.jpg 是否存在。")
+    elif uploaded:
+        image = Image.open(io.BytesIO(uploaded.read()))
+        image_caption = "上傳影像預覽"
 
     if image:
         st.image(image, caption=image_caption, use_column_width=True)
