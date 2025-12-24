@@ -38,16 +38,49 @@ LOCAL_LLM_MODEL_ID = "uer/gpt2-chinese-cluecorpussmall"
         else (str(p), None, None)
     },
 )
+def build_custom_objects() -> dict:
+    custom = {}
+    for name in ("TFOpLambda", "SlicingOpLambda"):
+        layer = getattr(tf.keras.layers, name, None)
+        if layer is not None:
+            custom[name] = layer
+    return custom
+
+
 def load_model(model_path: Path) -> tf.keras.Model:
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found at {model_path}")
+    custom_objects = build_custom_objects()
     try:
-        return tf.keras.models.load_model(model_path, compile=False)
+        return tf.keras.models.load_model(
+            model_path,
+            compile=False,
+            custom_objects=custom_objects,
+            safe_mode=False,
+        )
     except ValueError:
         if model_path.suffix.lower() == ".keras" and is_hdf5_file(model_path):
             h5_path = coerce_hdf5_path(model_path)
-            return tf.keras.models.load_model(h5_path, compile=False)
+            try:
+                return tf.keras.models.load_model(
+                    h5_path,
+                    compile=False,
+                    custom_objects=custom_objects,
+                    safe_mode=False,
+                )
+            except TypeError:
+                return tf.keras.models.load_model(
+                    h5_path,
+                    compile=False,
+                    custom_objects=custom_objects,
+                )
         raise
+    except TypeError:
+        return tf.keras.models.load_model(
+            model_path,
+            compile=False,
+            custom_objects=custom_objects,
+        )
 
 
 def list_model_files(outputs_dir: Path) -> list[Path]:
@@ -495,7 +528,7 @@ def main() -> None:
             "**快速導覽**\n"
             "1) 選擇或上傳模型\n"
             "2) 上傳影像\n"
-            "3) 查看結果後按「開始預測」生成改善建議"
+            "3) 查看結果後按「生成改善建議」取得建議"
         )
 
     st.markdown("### 上傳影像")
@@ -605,11 +638,11 @@ def main() -> None:
 
         st.markdown("#### LLM 改善建議")
         st.button(
-            "開始預測",
+            "生成改善建議",
             type="primary",
             on_click=request_llm_advice,
         )
-        st.caption("按下「開始預測」生成 LLM 改善建議。")
+        st.caption("按下「生成改善建議」以產生 LLM 建議。")
 
         current_llm_meta = {
             "prediction_meta": prediction_meta,
@@ -644,7 +677,7 @@ def main() -> None:
             elif llm_advice["error"] and not enable_llm:
                 st.caption(llm_advice["error"])
         else:
-            st.info("按「開始預測」生成改善建議。")
+            st.info("按「生成改善建議」生成改善建議。")
     elif image:
         st.info("已上傳影像，請等待模型推論或確認模型檔。")
 
