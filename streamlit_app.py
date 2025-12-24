@@ -34,7 +34,9 @@ def cache_resource_compat(**kwargs):
     if hasattr(st, "cache_resource"):
         kwargs.pop("allow_output_mutation", None)
         return st.cache_resource(**kwargs)
-    return st.cache(**kwargs)
+    def decorator(func):
+        return func
+    return decorator
 
 
 @cache_resource_compat(
@@ -98,6 +100,22 @@ def load_model(model_path: Path) -> tf.keras.Model:
             compile=False,
             custom_objects=custom_objects,
         )
+
+
+def get_cached_model(model_path: Path) -> tf.keras.Model:
+    cache = st.session_state.get("model_cache", {})
+    key = str(model_path)
+    meta = (
+        model_path.stat().st_mtime_ns,
+        model_path.stat().st_size,
+    )
+    entry = cache.get(key)
+    if entry and entry.get("meta") == meta:
+        return entry["model"]
+    model = load_model(model_path)
+    cache[key] = {"meta": meta, "model": model}
+    st.session_state["model_cache"] = cache
+    return model
 
 
 def list_model_files(outputs_dir: Path) -> list[Path]:
@@ -168,6 +186,17 @@ def load_local_llm(model_id: str):
     return model, tokenizer
 
 
+def get_cached_llm(model_id: str):
+    cache = st.session_state.get("llm_cache", {})
+    entry = cache.get(model_id)
+    if entry:
+        return entry
+    model, tokenizer = load_local_llm(model_id)
+    cache[model_id] = (model, tokenizer)
+    st.session_state["llm_cache"] = cache
+    return model, tokenizer
+
+
 def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
     status = "檢測到仙人掌" if has_cactus else "未檢測到仙人掌"
     severity = "氣候變遷不嚴重" if has_cactus else "氣候變遷嚴重"
@@ -222,7 +251,7 @@ def generate_local_advice(
     model_id: str,
 ) -> tuple[str | None, str | None]:
     try:
-        model, tokenizer = load_local_llm(model_id)
+        model, tokenizer = get_cached_llm(model_id)
     except Exception as e:
         return None, str(e)
     prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
@@ -271,6 +300,7 @@ def reset_prediction_state() -> None:
     st.session_state.pop("prediction_error", None)
     reset_advice_state()
     reset_gradcam_state()
+    st.session_state.pop("model_cache", None)
 
 
 def request_llm_advice() -> None:
@@ -605,7 +635,7 @@ def main() -> None:
             st.stop()
         with st.spinner("模型載入中..."):
             try:
-                model = load_model(model_path)
+                model = get_cached_model(model_path)
             except Exception as e:
                 st.error(f"模型載入失敗：{e}")
                 st.stop()
@@ -661,7 +691,7 @@ def main() -> None:
             if gradcam_meta != current_gradcam_meta:
                 with st.spinner("Grad-CAM 生成中..."):
                     try:
-                        model = load_model(Path(prediction["model_path"]))
+                        model = get_cached_model(Path(prediction["model_path"]))
                         heatmap = make_gradcam_heatmap(
                             np.asarray(prediction["resized"]), model
                         )
