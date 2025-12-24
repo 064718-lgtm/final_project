@@ -198,6 +198,15 @@ def generate_local_advice(
         return None, str(e)
 
 
+def reset_prediction_state() -> None:
+    st.session_state.pop("prediction", None)
+    st.session_state.pop("prediction_error", None)
+
+
+def request_prediction() -> None:
+    st.session_state["run_prediction"] = True
+
+
 def preprocess_image(img: Image.Image) -> np.ndarray:
     img = img.convert("RGB").resize(IMAGE_SIZE)
     arr = np.asarray(img, dtype=np.float32)
@@ -418,10 +427,17 @@ def main() -> None:
                 "選擇模型 (CNN/VGG16)",
                 options=model_choices,
                 format_func=lambda p: p.name if isinstance(p, Path) else str(p),
+                key="model_select",
+                on_change=reset_prediction_state,
             )
         else:
             st.info("未找到 outputs/*.keras 模型檔，可改用下方上傳模型。")
-        uploaded_model = st.file_uploader("上傳模型檔 (.keras/.h5)", type=["keras", "h5"])
+        uploaded_model = st.file_uploader(
+            "上傳模型檔 (.keras/.h5)",
+            type=["keras", "h5"],
+            key="uploaded_model",
+            on_change=reset_prediction_state,
+        )
         model_path = None
         if uploaded_model is not None:
             model_path = save_uploaded_model(uploaded_model)
@@ -433,9 +449,16 @@ def main() -> None:
             max_value=0.9,
             value=float(DEFAULT_THRESHOLD),
             step=0.05,
+            key="threshold",
+            on_change=reset_prediction_state,
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
-        enable_llm = st.checkbox("啟用本地 LLM 氣候解讀", value=True)
+        enable_llm = st.checkbox(
+            "啟用本地 LLM 氣候解讀",
+            value=True,
+            key="enable_llm",
+            on_change=reset_prediction_state,
+        )
         if enable_llm:
             st.caption("首次啟用會下載模型，可能需要 1-2 分鐘。")
         st.markdown(
@@ -447,11 +470,16 @@ def main() -> None:
 
     st.markdown("### 上傳影像")
     st.caption("支援 JPG/PNG，建議使用清晰、光線充足的空拍視角。")
-    uploaded = st.file_uploader("選擇一張影像", type=["jpg", "jpeg", "png"])
+    uploaded = st.file_uploader(
+        "選擇一張影像",
+        type=["jpg", "jpeg", "png"],
+        key="uploaded_image",
+        on_change=reset_prediction_state,
+    )
     image = None
     image_caption = ""
     if uploaded:
-        image = Image.open(io.BytesIO(uploaded.read()))
+        image = Image.open(io.BytesIO(uploaded.getvalue()))
         image_caption = "上傳影像預覽"
 
     if image:
@@ -462,13 +490,15 @@ def main() -> None:
     if not model_path:
         st.info("請先在側邊欄選擇 outputs/*.keras 或上傳模型檔。")
 
-    run_pred = st.button(
+    st.button(
         "開始預測",
         type="primary",
         disabled=not (image and model_path),
+        on_click=request_prediction,
     )
 
-    if run_pred:
+    should_run = st.session_state.pop("run_prediction", False)
+    if should_run:
         model_path = Path(model_path)
         if not model_path.exists():
             st.error(f"找不到模型檔：{model_path}")
@@ -500,20 +530,6 @@ def main() -> None:
         with col3:
             st.metric("閾值", f"{threshold:.2f}")
 
-        st.markdown("---")
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        if has_cactus:
-            st.markdown(
-                "**偵測到仙人掌，環境韌性仍在，氣候變遷壓力暫不嚴重。** "
-                "保持定期巡檢與水資源管理，持續追蹤後續變化即可。"
-            )
-        else:
-            st.markdown(
-                "**未檢測到仙人掌，請啟動氣候變遷警示。** "
-                "檢查棲地/灌溉/植被管理狀態，並評估是否需補植或加強保育行動。"
-            )
-        st.markdown("</div>", unsafe_allow_html=True)
-
         advice_text = None
         llm_error = None
         if enable_llm:
@@ -527,18 +543,52 @@ def main() -> None:
         if not advice_text:
             advice_text = default_climate_advice(has_cactus)
 
+        st.session_state["prediction"] = {
+            "prob_display": prob_display,
+            "has_cactus": has_cactus,
+            "threshold": threshold,
+            "resized": resized,
+            "overlay": overlay,
+            "advice_text": advice_text,
+            "llm_error": llm_error,
+        }
+
+    prediction = st.session_state.get("prediction")
+    if prediction:
+        st.markdown("---")
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        if prediction["has_cactus"]:
+            st.markdown(
+                "**偵測到仙人掌，環境韌性仍在，氣候變遷壓力暫不嚴重。** "
+                "保持定期巡檢與水資源管理，持續追蹤後續變化即可。"
+            )
+        else:
+            st.markdown(
+                "**未檢測到仙人掌，請啟動氣候變遷警示。** "
+                "檢查棲地/灌溉/植被管理狀態，並評估是否需補植或加強保育行動。"
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            st.metric("仙人掌機率", f"{prediction['prob_display']*100:.2f}%", delta=None)
+        with col2:
+            st.metric("判定", "存在" if prediction["has_cactus"] else "未檢測到")
+        with col3:
+            st.metric("閾值", f"{prediction['threshold']:.2f}")
+
         st.markdown("#### 氣候變遷解讀")
-        st.markdown(advice_text)
-        if llm_error and enable_llm:
-            st.caption(f"LLM 生成失敗，已改用預設文字：{llm_error}")
+        st.markdown(prediction["advice_text"])
+        if prediction["llm_error"] and enable_llm:
+            st.caption(f"LLM 生成失敗，已改用預設文字：{prediction['llm_error']}")
 
         st.markdown("#### Grad-CAM 關注熱力圖")
-        if overlay is not None:
+        if prediction["overlay"] is not None:
             gc1, gc2 = st.columns(2)
             with gc1:
-                st.image(resized, caption="輸入影像 (縮放後)", use_column_width=True)
+                st.image(prediction["resized"], caption="輸入影像 (縮放後)", use_column_width=True)
             with gc2:
-                st.image(overlay, caption="Grad-CAM 熱力圖覆蓋", use_column_width=True)
+                st.image(prediction["overlay"], caption="Grad-CAM 熱力圖覆蓋", use_column_width=True)
         else:
             st.info("此模型未找到 Conv2D 層，無法產生 Grad-CAM。")
 

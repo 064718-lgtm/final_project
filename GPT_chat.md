@@ -75,3 +75,5 @@ Q28: 不要使用 API key。
 A28: 已移除 LLM API 呼叫與 openai 依賴，改為本地規則化氣候解讀文字。
 Q29: 需要可部署於 Streamlit Cloud 的輕量 LLM，且不使用 API key。
 A29: 已加入本地輕量 LLM（transformers + 小型中文模型）並保留失敗時的預設解讀。
+Q30: 上傳影像後會自動預測，開始預測按鈕無效。
+A30: 已改用 session_state 控制，只在按下「開始預測」時推論，且輸入變更會清除舊結果。
