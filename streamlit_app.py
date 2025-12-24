@@ -260,11 +260,17 @@ def reset_advice_state() -> None:
     st.session_state.pop("llm_meta", None)
 
 
+def reset_gradcam_state() -> None:
+    st.session_state.pop("gradcam", None)
+    st.session_state.pop("gradcam_meta", None)
+
+
 def reset_prediction_state() -> None:
     st.session_state.pop("prediction", None)
     st.session_state.pop("prediction_meta", None)
     st.session_state.pop("prediction_error", None)
     reset_advice_state()
+    reset_gradcam_state()
 
 
 def request_llm_advice() -> None:
@@ -540,6 +546,15 @@ def main() -> None:
         if enable_llm:
             st.caption("首次啟用會下載模型，可能需要 1-2 分鐘。")
 
+        show_gradcam = st.checkbox(
+            "顯示 Grad-CAM 熱力圖",
+            value=False,
+            key="show_gradcam",
+            on_change=reset_gradcam_state,
+        )
+        if show_gradcam:
+            st.caption("啟用 Grad-CAM 會增加計算時間。")
+
         st.markdown("---")
         st.markdown(
             "**快速導覽**\n"
@@ -598,23 +613,17 @@ def main() -> None:
         with st.spinner("模型推論中..."):
             prob = predict(image, model)
             resized = image.resize(IMAGE_SIZE)
-            try:
-                heatmap = make_gradcam_heatmap(np.asarray(resized), model)
-                overlay = overlay_heatmap(resized, heatmap)
-            except Exception as e:
-                heatmap = None
-                overlay = None
-                st.warning(f"Grad-CAM 生成失敗：{e}")
 
         prob_display = 1 - prob if invert_pred else prob
         st.session_state["prediction"] = {
             "prob_display": prob_display,
             "resized": resized,
-            "overlay": overlay,
             "model_name": model_path.name,
+            "model_path": str(model_path),
         }
         st.session_state["prediction_meta"] = current_meta
         reset_advice_state()
+        reset_gradcam_state()
 
     prediction = st.session_state.get("prediction")
     prediction_meta = st.session_state.get("prediction_meta")
@@ -642,15 +651,37 @@ def main() -> None:
         with col3:
             st.metric("閾值", f"{threshold:.2f}")
 
-        st.markdown("#### Grad-CAM 關注熱力圖")
-        if prediction["overlay"] is not None:
-            gc1, gc2 = st.columns(2)
-            with gc1:
-                st.image(prediction["resized"], caption="輸入影像 (縮放後)", width="stretch")
-            with gc2:
-                st.image(prediction["overlay"], caption="Grad-CAM 熱力圖覆蓋", width="stretch")
-        else:
-            st.info("此模型未找到 Conv2D 層，無法產生 Grad-CAM。")
+        if show_gradcam:
+            st.markdown("#### Grad-CAM 關注熱力圖")
+            current_gradcam_meta = {
+                "prediction_meta": prediction_meta,
+                "model_path": prediction["model_path"],
+            }
+            gradcam_meta = st.session_state.get("gradcam_meta")
+            if gradcam_meta != current_gradcam_meta:
+                with st.spinner("Grad-CAM 生成中..."):
+                    try:
+                        model = load_model(Path(prediction["model_path"]))
+                        heatmap = make_gradcam_heatmap(
+                            np.asarray(prediction["resized"]), model
+                        )
+                        overlay = overlay_heatmap(prediction["resized"], heatmap)
+                        st.session_state["gradcam"] = overlay
+                        st.session_state["gradcam_meta"] = current_gradcam_meta
+                    except Exception as e:
+                        st.session_state["gradcam"] = None
+                        st.session_state["gradcam_meta"] = current_gradcam_meta
+                        st.warning(f"Grad-CAM 生成失敗：{e}")
+
+            overlay = st.session_state.get("gradcam")
+            if overlay is not None:
+                gc1, gc2 = st.columns(2)
+                with gc1:
+                    st.image(prediction["resized"], caption="輸入影像 (縮放後)", width="stretch")
+                with gc2:
+                    st.image(overlay, caption="Grad-CAM 熱力圖覆蓋", width="stretch")
+            else:
+                st.info("Grad-CAM 尚未生成或此模型不支援。")
 
         st.caption("可在側邊欄調整判定閾值；閾值越低，越容易判定為有仙人掌。")
 
