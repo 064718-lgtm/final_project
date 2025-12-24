@@ -55,3 +55,5 @@ A18: 在 README 嵌入 UI_demo0.png、UI_demo1.png，並推送圖片與說明。
 
 Q19: UI 判讀邏輯修正（偵測到＝氣候壓力暫不嚴重；未偵測到＝氣候警示）。
 A19: 更新 streamlit_app 判讀提示與 README 說明，並推送更新。
+Q20: 請將與你的對話存入 GPT_chat.md，並回報 Streamlit 部署時 tensorflow==2.10.1 找不到版本。
+A20: 已追加對話記錄，新增 runtime.txt 指定 python-3.10 以支援 tensorflow==2.10.1。
