@@ -436,50 +436,66 @@ def main() -> None:
         st.subheader("設定")
         model_choices = list_model_files(OUTPUTS_DIR)
         model_select = None
+        st.markdown("**模型來源**")
+        st.caption("選擇要使用的模型檔，會影響預測結果。")
         if model_choices:
             model_select = st.selectbox(
-                "選擇模型 (CNN/VGG16)",
+                "模型檔",
                 options=model_choices,
                 format_func=lambda p: p.name if isinstance(p, Path) else str(p),
                 key="model_select",
                 on_change=reset_prediction_state,
+                label_visibility="collapsed",
             )
         else:
-            st.info("未找到 outputs/*.keras 模型檔，可改用下方上傳模型。")
+            st.info("目前未找到可用模型，可改用下方上傳。")
+
+        st.markdown("**上傳模型**")
+        st.caption("若清單中沒有模型，可上傳 .keras 或 .h5 檔。")
         uploaded_model = st.file_uploader(
-            "上傳模型檔 (.keras/.h5)",
+            "上傳模型檔",
             type=["keras", "h5"],
             key="uploaded_model",
             on_change=reset_prediction_state,
+            label_visibility="collapsed",
         )
         model_path = None
         if uploaded_model is not None:
             model_path = save_uploaded_model(uploaded_model)
         elif model_select:
             model_path = Path(model_select)
+
+        st.markdown("**判定門檻**")
+        st.caption("機率高於門檻時，視為偵測到仙人掌。")
         threshold = st.slider(
-            "判定閾值 (存在機率 >= 閾值 即視為有仙人掌)",
+            "判定門檻",
             min_value=0.1,
             max_value=0.9,
             value=float(DEFAULT_THRESHOLD),
             step=0.05,
             key="threshold",
             on_change=reset_advice_state,
+            label_visibility="collapsed",
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
+
+        st.markdown("**氣候解讀**")
+        st.caption("啟用本地輕量模型，生成改善建議。")
         enable_llm = st.checkbox(
-            "啟用本地 LLM 氣候解讀",
+            "啟用氣候解讀",
             value=True,
             key="enable_llm",
             on_change=reset_advice_state,
         )
         if enable_llm:
             st.caption("首次啟用會下載模型，可能需要 1-2 分鐘。")
+
+        st.markdown("---")
         st.markdown(
-            "操作步驟：\n"
-            "1) 在這裡選擇模型檔（`outputs/*.keras`/`outputs/*.h5`）或上傳模型。\n"
-            "2) 在主畫面上傳 JPG/PNG。\n"
-            "3) 系統會自動推論，按下「開始預測」生成 LLM 改善建議。"
+            "**快速導覽**\n"
+            "1) 選擇或上傳模型\n"
+            "2) 上傳影像\n"
+            "3) 查看結果後按「開始預測」生成改善建議"
         )
 
     st.markdown("### 上傳影像")
