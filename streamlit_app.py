@@ -342,8 +342,8 @@ def main() -> None:
             "操作步驟：\n"
             "1) 在這裡選擇模型檔（`outputs/*.keras`/`outputs/*.h5`）或上傳模型。\n"
             "2) 若要快速展示，可在下方選擇 DEMO 範例影像（DEMO/0=無仙人掌，DEMO/1=有仙人掌）。\n"
-            "3) 或切換到主畫面上傳 JPG/PNG，自行推論。\n"
-            "4) 推論後會顯示機率、判定、Grad-CAM 熱力圖與暖化提醒。"
+            "3) 或切換到主畫面上傳 JPG/PNG。\n"
+            "4) 按下「開始預測」後才會進行推論與顯示結果。"
         )
 
     st.markdown("### 上傳影像")
@@ -366,10 +366,19 @@ def main() -> None:
 
     if image:
         st.image(image, caption=image_caption, use_column_width=True)
+    else:
+        st.info("請上傳影像，或在側邊欄選擇範例影像。")
 
-        if not model_path:
-            st.error("尚未提供模型檔。請在側邊欄選擇 outputs/*.keras 或上傳模型。")
-            st.stop()
+    if not model_path:
+        st.info("請先在側邊欄選擇 outputs/*.keras 或上傳模型檔。")
+
+    run_pred = st.button(
+        "開始預測",
+        type="primary",
+        disabled=not (image and model_path),
+    )
+
+    if run_pred:
         model_path = Path(model_path)
         if not model_path.exists():
             st.error(f"找不到模型檔：{model_path}")
@@ -426,8 +435,6 @@ def main() -> None:
             st.info("此模型未找到 Conv2D 層，無法產生 Grad-CAM。")
 
         st.caption("可在側邊欄調整判定閾值；閾值越低，越容易判定為有仙人掌。")
-    else:
-        st.info("請上傳影像，或在側邊欄選擇範例影像以進行推論。")
 
 
 if __name__ == "__main__":
