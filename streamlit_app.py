@@ -9,6 +9,7 @@ Theme: 利用空拍影像進行氣候變遷預警之平台
 
 from __future__ import annotations
 
+import hashlib
 import io
 import tempfile
 import zipfile
@@ -198,8 +199,15 @@ def generate_local_advice(
         return None, str(e)
 
 
+def compute_image_hash(data: bytes | None) -> str | None:
+    if not data:
+        return None
+    return hashlib.sha256(data).hexdigest()
+
+
 def reset_prediction_state() -> None:
     st.session_state.pop("prediction", None)
+    st.session_state.pop("prediction_meta", None)
     st.session_state.pop("prediction_error", None)
 
 
@@ -476,10 +484,12 @@ def main() -> None:
         key="uploaded_image",
         on_change=reset_prediction_state,
     )
+    uploaded_bytes = None
     image = None
     image_caption = ""
     if uploaded:
-        image = Image.open(io.BytesIO(uploaded.getvalue()))
+        uploaded_bytes = uploaded.getvalue()
+        image = Image.open(io.BytesIO(uploaded_bytes))
         image_caption = "上傳影像預覽"
 
     if image:
@@ -496,6 +506,13 @@ def main() -> None:
         disabled=not (image and model_path),
         on_click=request_prediction,
     )
+
+    current_meta = {
+        "image_hash": compute_image_hash(uploaded_bytes),
+        "model_path": str(model_path) if model_path else None,
+        "threshold": float(threshold),
+        "enable_llm": bool(enable_llm),
+    }
 
     should_run = st.session_state.pop("run_prediction", False)
     if should_run:
@@ -552,9 +569,11 @@ def main() -> None:
             "advice_text": advice_text,
             "llm_error": llm_error,
         }
+        st.session_state["prediction_meta"] = current_meta
 
     prediction = st.session_state.get("prediction")
-    if prediction:
+    prediction_meta = st.session_state.get("prediction_meta")
+    if prediction and prediction_meta == current_meta:
         st.markdown("---")
         st.markdown('<div class="card">', unsafe_allow_html=True)
         if prediction["has_cactus"]:
@@ -593,6 +612,8 @@ def main() -> None:
             st.info("此模型未找到 Conv2D 層，無法產生 Grad-CAM。")
 
         st.caption("可在側邊欄調整判定閾值；閾值越低，越容易判定為有仙人掌。")
+    elif image:
+        st.info("已上傳影像，請按「開始預測」。")
 
 
 if __name__ == "__main__":
