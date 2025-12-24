@@ -93,3 +93,5 @@ Q37: Streamlit 無 cache_resource 屬性造成錯誤。
 A37: 已新增 cache_resource 相容處理，舊版 Streamlit 會自動改用 st.cache。
 Q38: 仍有 cache_resource 造成錯誤。
 A38: 已將本地 LLM 的 cache 裝飾改用 cache_resource 相容函式。
+Q39: Streamlit 提示 use_column_width 已棄用。
+A39: 已改為 use_container_width。
