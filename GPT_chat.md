@@ -89,3 +89,5 @@ Q35: 氣候解讀預設啟用，按鈕改為「生成改善建議」，且修正
 A35: 已改按鈕文案為「生成改善建議」，並調整模型載入支援 SlicingOpLambda。
 Q36: 請在 README 補充 Streamlit 平台操作步驟與功能。
 A36: 已新增 Streamlit 操作步驟與功能說明。
+Q37: Streamlit 無 cache_resource 屬性造成錯誤。
+A37: 已新增 cache_resource 相容處理，舊版 Streamlit 會自動改用 st.cache。

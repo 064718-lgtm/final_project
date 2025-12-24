@@ -30,13 +30,21 @@ DEFAULT_THRESHOLD = 0.5
 LOCAL_LLM_MODEL_ID = "uer/gpt2-chinese-cluecorpussmall"
 
 
-@st.cache_resource(
+def cache_resource_compat(**kwargs):
+    if hasattr(st, "cache_resource"):
+        kwargs.pop("allow_output_mutation", None)
+        return st.cache_resource(**kwargs)
+    return st.cache(**kwargs)
+
+
+@cache_resource_compat(
     show_spinner=False,
     hash_funcs={
         Path: lambda p: (str(p), p.stat().st_mtime_ns, p.stat().st_size)
         if p.exists()
         else (str(p), None, None)
     },
+    allow_output_mutation=True,
 )
 def build_custom_objects() -> dict:
     custom = {}
