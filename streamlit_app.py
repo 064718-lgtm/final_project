@@ -26,6 +26,7 @@ MODEL_UPLOAD_DIR = Path(tempfile.gettempdir()) / "cactus_models"
 DEFAULT_MODEL_PATH = OUTPUTS_DIR / "vgg16.keras"
 IMAGE_SIZE = (96, 96)
 DEFAULT_THRESHOLD = 0.5
+LOCAL_LLM_MODEL_ID = "uer/gpt2-chinese-cluecorpussmall"
 
 
 @st.cache_resource(
@@ -102,6 +103,99 @@ def default_climate_advice(has_cactus: bool) -> str:
         "- 設置早期預警與社區協作應變\n"
         "透過持續監測與介入可降低退化風險。"
     )
+
+
+@st.cache_resource(show_spinner=False)
+def load_local_llm(model_id: str):
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=False)
+    model = AutoModelForCausalLM.from_pretrained(model_id)
+    model.eval()
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    return model, tokenizer
+
+
+def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
+    status = "檢測到仙人掌" if has_cactus else "未檢測到仙人掌"
+    severity = "氣候變遷不嚴重" if has_cactus else "氣候變遷嚴重"
+    return (
+        "你是環境風險分析師。請用繁體中文輸出 3-5 點條列建議。\n"
+        "必須包含結論（氣候變遷不嚴重/嚴重）與後續注意跡象或處置措施。\n"
+        "範例：\n"
+        "輸入：檢測到仙人掌\n"
+        "輸出：\n"
+        "- 氣候變遷不嚴重，但需注意乾旱期延長\n"
+        "- 觀察植被覆蓋是否下降\n"
+        "輸入：未檢測到仙人掌\n"
+        "輸出：\n"
+        "- 氣候變遷嚴重，建議啟動節水與復育\n"
+        "- 加強土壤含水與植被監測\n"
+        "現在輸入：\n"
+        f"模型={model_name}；結果={status}；機率={prob:.2f}；閾值={threshold:.2f}\n"
+        f"結論：{severity}\n"
+        "輸出：\n"
+    )
+
+
+def format_llm_output(text: str) -> str:
+    if not text:
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    bullet_lines = [
+        line
+        for line in lines
+        if line.startswith(("-", "•", "1.", "2.", "3.", "4.", "5."))
+    ]
+    if bullet_lines:
+        return "\n".join(bullet_lines[:5])
+    parts = (
+        text.replace("。", "。\n")
+        .replace("！", "！\n")
+        .replace("？", "？\n")
+        .splitlines()
+    )
+    parts = [p.strip() for p in parts if p.strip()]
+    if not parts:
+        return ""
+    parts = parts[:5]
+    return "\n".join(f"- {p}" for p in parts)
+
+
+def generate_local_advice(
+    has_cactus: bool,
+    prob: float,
+    threshold: float,
+    model_name: str,
+    model_id: str,
+) -> tuple[str | None, str | None]:
+    try:
+        model, tokenizer = load_local_llm(model_id)
+    except Exception as e:
+        return None, str(e)
+    prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
+    inputs = tokenizer(prompt, return_tensors="pt")
+    try:
+        output_ids = model.generate(
+            **inputs,
+            max_new_tokens=160,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.9,
+            pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
+        generated = tokenizer.decode(
+            output_ids[0][inputs["input_ids"].shape[1] :],
+            skip_special_tokens=True,
+        )
+        formatted = format_llm_output(generated)
+        if not formatted:
+            return None, "LLM 輸出為空"
+        return formatted, None
+    except Exception as e:
+        return None, str(e)
 
 
 def preprocess_image(img: Image.Image) -> np.ndarray:
@@ -341,6 +435,9 @@ def main() -> None:
             step=0.05,
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
+        enable_llm = st.checkbox("啟用本地 LLM 氣候解讀", value=True)
+        if enable_llm:
+            st.caption("首次啟用會下載模型，可能需要 1-2 分鐘。")
         st.markdown(
             "操作步驟：\n"
             "1) 在這裡選擇模型檔（`outputs/*.keras`/`outputs/*.h5`）或上傳模型。\n"
@@ -417,8 +514,23 @@ def main() -> None:
             )
         st.markdown("</div>", unsafe_allow_html=True)
 
+        advice_text = None
+        llm_error = None
+        if enable_llm:
+            advice_text, llm_error = generate_local_advice(
+                has_cactus=has_cactus,
+                prob=prob_display,
+                threshold=threshold,
+                model_name=model_path.name,
+                model_id=LOCAL_LLM_MODEL_ID,
+            )
+        if not advice_text:
+            advice_text = default_climate_advice(has_cactus)
+
         st.markdown("#### 氣候變遷解讀")
-        st.markdown(default_climate_advice(has_cactus))
+        st.markdown(advice_text)
+        if llm_error and enable_llm:
+            st.caption(f"LLM 生成失敗，已改用預設文字：{llm_error}")
 
         st.markdown("#### Grad-CAM 關注熱力圖")
         if overlay is not None:

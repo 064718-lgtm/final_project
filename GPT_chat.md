@@ -73,3 +73,5 @@ Q27: 請串接可部署在 Streamlit Cloud 的 LLM，依仙人掌偵測結果產
 A27: 已加入 OpenAI LLM 生成氣候解讀（可選），並提供預設建議與 Secrets 設定說明。
 Q28: 不要使用 API key。
 A28: 已移除 LLM API 呼叫與 openai 依賴，改為本地規則化氣候解讀文字。
+Q29: 需要可部署於 Streamlit Cloud 的輕量 LLM，且不使用 API key。
+A29: 已加入本地輕量 LLM（transformers + 小型中文模型）並保留失敗時的預設解讀。
