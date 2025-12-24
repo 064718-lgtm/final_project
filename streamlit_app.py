@@ -147,7 +147,7 @@ def default_climate_advice(has_cactus: bool) -> str:
     )
 
 
-@st.cache_resource(show_spinner=False)
+@cache_resource_compat(show_spinner=False, allow_output_mutation=True)
 def load_local_llm(model_id: str):
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
