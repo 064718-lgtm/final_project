@@ -205,14 +205,20 @@ def compute_image_hash(data: bytes | None) -> str | None:
     return hashlib.sha256(data).hexdigest()
 
 
+def reset_advice_state() -> None:
+    st.session_state.pop("llm_advice", None)
+    st.session_state.pop("llm_meta", None)
+
+
 def reset_prediction_state() -> None:
     st.session_state.pop("prediction", None)
     st.session_state.pop("prediction_meta", None)
     st.session_state.pop("prediction_error", None)
+    reset_advice_state()
 
 
-def request_prediction() -> None:
-    st.session_state["run_prediction"] = True
+def request_llm_advice() -> None:
+    st.session_state["run_llm_advice"] = True
 
 
 def preprocess_image(img: Image.Image) -> np.ndarray:
@@ -458,14 +464,14 @@ def main() -> None:
             value=float(DEFAULT_THRESHOLD),
             step=0.05,
             key="threshold",
-            on_change=reset_prediction_state,
+            on_change=reset_advice_state,
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
         enable_llm = st.checkbox(
             "啟用本地 LLM 氣候解讀",
             value=True,
             key="enable_llm",
-            on_change=reset_prediction_state,
+            on_change=reset_advice_state,
         )
         if enable_llm:
             st.caption("首次啟用會下載模型，可能需要 1-2 分鐘。")
@@ -473,7 +479,7 @@ def main() -> None:
             "操作步驟：\n"
             "1) 在這裡選擇模型檔（`outputs/*.keras`/`outputs/*.h5`）或上傳模型。\n"
             "2) 在主畫面上傳 JPG/PNG。\n"
-            "3) 按下「開始預測」後才會進行推論與顯示結果。"
+            "3) 系統會自動推論，按下「開始預測」生成 LLM 改善建議。"
         )
 
     st.markdown("### 上傳影像")
@@ -500,22 +506,18 @@ def main() -> None:
     if not model_path:
         st.info("請先在側邊欄選擇 outputs/*.keras 或上傳模型檔。")
 
-    st.button(
-        "開始預測",
-        type="primary",
-        disabled=not (image and model_path),
-        on_click=request_prediction,
-    )
-
     current_meta = {
         "image_hash": compute_image_hash(uploaded_bytes),
         "model_path": str(model_path) if model_path else None,
-        "threshold": float(threshold),
-        "enable_llm": bool(enable_llm),
+        "model_mtime": model_path.stat().st_mtime_ns if model_path and model_path.exists() else None,
+        "model_size": model_path.stat().st_size if model_path and model_path.exists() else None,
     }
 
-    should_run = st.session_state.pop("run_prediction", False)
-    if should_run:
+    prediction = st.session_state.get("prediction")
+    prediction_meta = st.session_state.get("prediction_meta")
+    should_predict = image and model_path and current_meta["image_hash"]
+
+    if should_predict and prediction_meta != current_meta:
         model_path = Path(model_path)
         if not model_path.exists():
             st.error(f"找不到模型檔：{model_path}")
@@ -538,45 +540,22 @@ def main() -> None:
                 st.warning(f"Grad-CAM 生成失敗：{e}")
 
         prob_display = 1 - prob if invert_pred else prob
-        has_cactus = prob_display >= threshold
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            st.metric("仙人掌機率", f"{prob_display*100:.2f}%", delta=None)
-        with col2:
-            st.metric("判定", "存在" if has_cactus else "未檢測到")
-        with col3:
-            st.metric("閾值", f"{threshold:.2f}")
-
-        advice_text = None
-        llm_error = None
-        if enable_llm:
-            advice_text, llm_error = generate_local_advice(
-                has_cactus=has_cactus,
-                prob=prob_display,
-                threshold=threshold,
-                model_name=model_path.name,
-                model_id=LOCAL_LLM_MODEL_ID,
-            )
-        if not advice_text:
-            advice_text = default_climate_advice(has_cactus)
-
         st.session_state["prediction"] = {
             "prob_display": prob_display,
-            "has_cactus": has_cactus,
-            "threshold": threshold,
             "resized": resized,
             "overlay": overlay,
-            "advice_text": advice_text,
-            "llm_error": llm_error,
+            "model_name": model_path.name,
         }
         st.session_state["prediction_meta"] = current_meta
+        reset_advice_state()
 
     prediction = st.session_state.get("prediction")
     prediction_meta = st.session_state.get("prediction_meta")
     if prediction and prediction_meta == current_meta:
         st.markdown("---")
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        if prediction["has_cactus"]:
+        has_cactus = prediction["prob_display"] >= threshold
+        if has_cactus:
             st.markdown(
                 "**偵測到仙人掌，環境韌性仍在，氣候變遷壓力暫不嚴重。** "
                 "保持定期巡檢與水資源管理，持續追蹤後續變化即可。"
@@ -592,14 +571,9 @@ def main() -> None:
         with col1:
             st.metric("仙人掌機率", f"{prediction['prob_display']*100:.2f}%", delta=None)
         with col2:
-            st.metric("判定", "存在" if prediction["has_cactus"] else "未檢測到")
+            st.metric("判定", "存在" if has_cactus else "未檢測到")
         with col3:
-            st.metric("閾值", f"{prediction['threshold']:.2f}")
-
-        st.markdown("#### 氣候變遷解讀")
-        st.markdown(prediction["advice_text"])
-        if prediction["llm_error"] and enable_llm:
-            st.caption(f"LLM 生成失敗，已改用預設文字：{prediction['llm_error']}")
+            st.metric("閾值", f"{threshold:.2f}")
 
         st.markdown("#### Grad-CAM 關注熱力圖")
         if prediction["overlay"] is not None:
@@ -612,8 +586,51 @@ def main() -> None:
             st.info("此模型未找到 Conv2D 層，無法產生 Grad-CAM。")
 
         st.caption("可在側邊欄調整判定閾值；閾值越低，越容易判定為有仙人掌。")
+
+        st.markdown("#### LLM 改善建議")
+        st.button(
+            "開始預測",
+            type="primary",
+            on_click=request_llm_advice,
+        )
+        st.caption("按下「開始預測」生成 LLM 改善建議。")
+
+        current_llm_meta = {
+            "prediction_meta": prediction_meta,
+            "threshold": float(threshold),
+            "enable_llm": bool(enable_llm),
+        }
+        should_generate_llm = st.session_state.pop("run_llm_advice", False)
+        if should_generate_llm:
+            advice_text = None
+            llm_error = None
+            if enable_llm:
+                advice_text, llm_error = generate_local_advice(
+                    has_cactus=has_cactus,
+                    prob=prediction["prob_display"],
+                    threshold=threshold,
+                    model_name=prediction["model_name"],
+                    model_id=LOCAL_LLM_MODEL_ID,
+                )
+            if not advice_text:
+                advice_text = default_climate_advice(has_cactus)
+                if not enable_llm and not llm_error:
+                    llm_error = "LLM 未啟用，已改用預設文字"
+            st.session_state["llm_advice"] = {"text": advice_text, "error": llm_error}
+            st.session_state["llm_meta"] = current_llm_meta
+
+        llm_advice = st.session_state.get("llm_advice")
+        llm_meta = st.session_state.get("llm_meta")
+        if llm_advice and llm_meta == current_llm_meta:
+            st.markdown(llm_advice["text"])
+            if llm_advice["error"] and enable_llm:
+                st.caption(f"LLM 生成失敗，已改用預設文字：{llm_advice['error']}")
+            elif llm_advice["error"] and not enable_llm:
+                st.caption(llm_advice["error"])
+        else:
+            st.info("按「開始預測」生成改善建議。")
     elif image:
-        st.info("已上傳影像，請按「開始預測」。")
+        st.info("已上傳影像，請等待模型推論或確認模型檔。")
 
 
 if __name__ == "__main__":

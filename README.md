@@ -35,10 +35,11 @@ python cactus_training.py --batch-size 64 --image-size 96 --epochs-cnn 8 --epoch
 streamlit run streamlit_app.py
 ```
 - 側邊欄：選擇 `outputs/*.keras`/`outputs/*.h5` 模型或上傳模型、調整閾值、啟用本地 LLM 解讀。
-- 結果：顯示仙人掌機率與判定、Grad-CAM 熱力圖覆蓋、暖化風險提示。
+- 結果：上傳影像後自動推論，顯示仙人掌機率與判定、Grad-CAM 熱力圖覆蓋、暖化風險提示。
 - 判讀：偵測到仙人掌 → 環境壓力暫不嚴重；未檢測到 → 觸發氣候變遷警示並建議檢查灌溉/植被。
 - 介面風格：柔和粉彩、暖白背景的 eco-tech 儀表板，適合長時間閱讀。
 - 本地 LLM：使用輕量模型（預設 `uer/gpt2-chinese-cluecorpussmall`），首次啟用會下載模型。
+- LLM 建議：按「開始預測」生成改善建議。
 
 ### Streamlit 預測結果示意
 - `UI_demo0.png`：Streamlit 預測畫面示意。
