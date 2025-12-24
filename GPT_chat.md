@@ -87,3 +87,5 @@ Q34: 請依據 CRISP-DM 生成報告。
 A34: 已新增 CRISPDM.md，涵蓋商業理解到部署與維運建議。
 Q35: 氣候解讀預設啟用，按鈕改為「生成改善建議」，且修正上傳後不預測與 SlicingOpLambda 錯誤。
 A35: 已改按鈕文案為「生成改善建議」，並調整模型載入支援 SlicingOpLambda。
+Q36: 請在 README 補充 Streamlit 平台操作步驟與功能。
+A36: 已新增 Streamlit 操作步驟與功能說明。
