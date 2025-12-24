@@ -40,13 +40,22 @@ DEFAULT_THRESHOLD = 0.5
 def load_model(model_path: Path) -> tf.keras.Model:
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found at {model_path}")
-    return tf.keras.models.load_model(model_path)
+    try:
+        return tf.keras.models.load_model(model_path, compile=False)
+    except ValueError:
+        if model_path.suffix.lower() == ".keras" and is_hdf5_file(model_path):
+            h5_path = coerce_hdf5_path(model_path)
+            return tf.keras.models.load_model(h5_path, compile=False)
+        raise
 
 
 def list_model_files(outputs_dir: Path) -> list[Path]:
     if not outputs_dir.exists():
         return []
-    return sorted(outputs_dir.glob("*.keras"))
+    candidates = []
+    for pattern in ("*.keras", "*.h5"):
+        candidates.extend(outputs_dir.glob(pattern))
+    return sorted(candidates)
 
 
 def save_uploaded_model(uploaded_file) -> Path:
@@ -54,6 +63,26 @@ def save_uploaded_model(uploaded_file) -> Path:
     model_path = MODEL_UPLOAD_DIR / uploaded_file.name
     model_path.write_bytes(uploaded_file.getbuffer())
     return model_path
+
+
+def is_hdf5_file(model_path: Path) -> bool:
+    try:
+        import h5py
+    except Exception:
+        return False
+    try:
+        return h5py.is_hdf5(model_path)
+    except Exception:
+        return False
+
+
+def coerce_hdf5_path(model_path: Path) -> Path:
+    h5_dir = MODEL_UPLOAD_DIR / "h5"
+    h5_dir.mkdir(parents=True, exist_ok=True)
+    h5_path = h5_dir / f"{model_path.stem}.h5"
+    if not h5_path.exists() or h5_path.stat().st_mtime_ns < model_path.stat().st_mtime_ns:
+        h5_path.write_bytes(model_path.read_bytes())
+    return h5_path
 
 
 def preprocess_image(img: Image.Image) -> np.ndarray:
@@ -290,7 +319,7 @@ def main() -> None:
             )
         else:
             st.info("未找到 outputs/*.keras 模型檔，可改用下方上傳模型。")
-        uploaded_model = st.file_uploader("上傳模型檔 (.keras)", type=["keras"])
+        uploaded_model = st.file_uploader("上傳模型檔 (.keras/.h5)", type=["keras", "h5"])
         model_path = None
         if uploaded_model is not None:
             model_path = save_uploaded_model(uploaded_model)
@@ -311,7 +340,7 @@ def main() -> None:
         )
         st.markdown(
             "操作步驟：\n"
-            "1) 在這裡選擇模型檔（`outputs/*.keras`）或上傳 `.keras`。\n"
+            "1) 在這裡選擇模型檔（`outputs/*.keras`/`outputs/*.h5`）或上傳模型。\n"
             "2) 若要快速展示，可在下方選擇 DEMO 範例影像（DEMO/0=無仙人掌，DEMO/1=有仙人掌）。\n"
             "3) 或切換到主畫面上傳 JPG/PNG，自行推論。\n"
             "4) 推論後會顯示機率、判定、Grad-CAM 熱力圖與暖化提醒。"
