@@ -217,6 +217,18 @@ def looks_like_hdf5(model_path: Path) -> bool:
         return False
 
 
+def validate_hdf5_file(model_path: Path) -> bool:
+    try:
+        import h5py
+    except Exception:
+        return looks_like_hdf5(model_path)
+    try:
+        with h5py.File(model_path, "r"):
+            return True
+    except Exception:
+        return False
+
+
 def detect_model_file_type(model_path: Path) -> str:
     if model_path.is_dir():
         return "saved_model"
@@ -230,7 +242,7 @@ def detect_model_file_type(model_path: Path) -> str:
     if head.startswith(LFS_SIGNATURE):
         return "lfs"
     if head.startswith(HDF5_SIGNATURE):
-        return "hdf5"
+        return "hdf5" if validate_hdf5_file(model_path) else "unknown"
     if any(head.startswith(sig) for sig in ZIP_SIGNATURES):
         return "zip"
     try:
@@ -238,7 +250,7 @@ def detect_model_file_type(model_path: Path) -> str:
             return "zip"
     except OSError:
         pass
-    if is_hdf5_file(model_path):
+    if is_hdf5_file(model_path) and validate_hdf5_file(model_path):
         return "hdf5"
     return "unknown"
 
@@ -257,8 +269,10 @@ def is_hdf5_file(model_path: Path) -> bool:
 def coerce_hdf5_path(model_path: Path) -> Path:
     h5_dir = MODEL_UPLOAD_DIR / "h5"
     h5_dir.mkdir(parents=True, exist_ok=True)
-    h5_path = h5_dir / f"{model_path.stem}.h5"
-    if not h5_path.exists() or h5_path.stat().st_mtime_ns < model_path.stat().st_mtime_ns:
+    stat = model_path.stat()
+    cache_key = f"{model_path.stem}-{stat.st_mtime_ns}-{stat.st_size}"
+    h5_path = h5_dir / f"{cache_key}.h5"
+    if not h5_path.exists():
         h5_path.write_bytes(model_path.read_bytes())
     return h5_path
 
