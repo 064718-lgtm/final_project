@@ -10,6 +10,7 @@ Theme: 利用空拍影像進行氣候變遷預警之平台
 from __future__ import annotations
 
 import io
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -19,17 +20,40 @@ import tensorflow as tf
 from PIL import Image
 
 # Configuration
-DEFAULT_MODEL_PATH = Path("outputs/vgg16.keras")
-DEMO_DIR = Path("DEMO")
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUTS_DIR = BASE_DIR / "outputs"
+DEMO_DIR = BASE_DIR / "DEMO"
+MODEL_UPLOAD_DIR = Path(tempfile.gettempdir()) / "cactus_models"
+DEFAULT_MODEL_PATH = OUTPUTS_DIR / "vgg16.keras"
 IMAGE_SIZE = (96, 96)
 DEFAULT_THRESHOLD = 0.5
 
 
-@st.cache(allow_output_mutation=True)
-def load_model(model_path: Path):
+@st.cache_resource(
+    show_spinner=False,
+    hash_funcs={
+        Path: lambda p: (str(p), p.stat().st_mtime_ns, p.stat().st_size)
+        if p.exists()
+        else (str(p), None, None)
+    },
+)
+def load_model(model_path: Path) -> tf.keras.Model:
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found at {model_path}")
     return tf.keras.models.load_model(model_path)
+
+
+def list_model_files(outputs_dir: Path) -> list[Path]:
+    if not outputs_dir.exists():
+        return []
+    return sorted(outputs_dir.glob("*.keras"))
+
+
+def save_uploaded_model(uploaded_file) -> Path:
+    MODEL_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    model_path = MODEL_UPLOAD_DIR / uploaded_file.name
+    model_path.write_bytes(uploaded_file.getbuffer())
+    return model_path
 
 
 def preprocess_image(img: Image.Image) -> np.ndarray:
@@ -146,7 +170,7 @@ def overlay_heatmap(img: Image.Image, heatmap: np.ndarray, intensity: float = 0.
 
 
 def list_sample_ids(limit: int = 8):
-    sample_csv = Path("sample_submission.csv")
+    sample_csv = BASE_DIR / "sample_submission.csv"
     if sample_csv.exists():
         import pandas as pd
 
@@ -168,14 +192,14 @@ def load_demo_image(demo_key: str) -> bytes | None:
 
 def load_sample_image(file_id: str) -> bytes | None:
     candidates = [
-        Path("test") / file_id,
-        Path("test") / "test" / file_id,
-        Path("train") / file_id,
+        BASE_DIR / "test" / file_id,
+        BASE_DIR / "test" / "test" / file_id,
+        BASE_DIR / "train" / file_id,
     ]
     for p in candidates:
         if p.exists():
             return p.read_bytes()
-    for zpath, prefix in [(Path("test.zip"), "test"), (Path("train.zip"), "train")]:
+    for zpath, prefix in [(BASE_DIR / "test.zip", "test"), (BASE_DIR / "train.zip", "train")]:
         if zpath.exists():
             with zipfile.ZipFile(zpath) as z:
                 for name in (f"{prefix}/{file_id}", file_id):
@@ -256,15 +280,22 @@ def main() -> None:
 
     with st.sidebar:
         st.subheader("設定")
-        outputs_dir = Path("outputs")
-        model_choices = [p for p in outputs_dir.glob("*.keras")] if outputs_dir.exists() else []
-        default_choice = DEFAULT_MODEL_PATH if DEFAULT_MODEL_PATH.exists() else (model_choices[0] if model_choices else "")
-        model_select = st.selectbox(
-            "選擇模型 (CNN/VGG16)",
-            options=model_choices or [default_choice],
-            format_func=lambda p: p.name if isinstance(p, Path) else str(p),
-        )
-        model_path = Path(model_select) if model_select else DEFAULT_MODEL_PATH
+        model_choices = list_model_files(OUTPUTS_DIR)
+        model_select = None
+        if model_choices:
+            model_select = st.selectbox(
+                "選擇模型 (CNN/VGG16)",
+                options=model_choices,
+                format_func=lambda p: p.name if isinstance(p, Path) else str(p),
+            )
+        else:
+            st.info("未找到 outputs/*.keras 模型檔，可改用下方上傳模型。")
+        uploaded_model = st.file_uploader("上傳模型檔 (.keras)", type=["keras"])
+        model_path = None
+        if uploaded_model is not None:
+            model_path = save_uploaded_model(uploaded_model)
+        elif model_select:
+            model_path = Path(model_select)
         threshold = st.slider(
             "判定閾值 (存在機率 >= 閾值 即視為有仙人掌)",
             min_value=0.1,
@@ -272,7 +303,7 @@ def main() -> None:
             value=float(DEFAULT_THRESHOLD),
             step=0.05,
         )
-        invert_pred = "vgg" in str(model_path).lower()
+        invert_pred = "vgg" in str(model_path).lower() if model_path else False
         preset_options = ["DEMO_無仙人掌", "DEMO_有仙人掌"]
         sample_choice = st.selectbox(
             "Demo 範例影像（固定 DEMO/0.jpg 與 DEMO/1.jpg）",
@@ -280,7 +311,7 @@ def main() -> None:
         )
         st.markdown(
             "操作步驟：\n"
-            "1) 在這裡選擇模型檔（`.keras`，放在 `outputs/`）。\n"
+            "1) 在這裡選擇模型檔（`outputs/*.keras`）或上傳 `.keras`。\n"
             "2) 若要快速展示，可在下方選擇 DEMO 範例影像（DEMO/0=無仙人掌，DEMO/1=有仙人掌）。\n"
             "3) 或切換到主畫面上傳 JPG/PNG，自行推論。\n"
             "4) 推論後會顯示機率、判定、Grad-CAM 熱力圖與暖化提醒。"
@@ -306,11 +337,18 @@ def main() -> None:
     if image:
         st.image(image, caption=image_caption, use_column_width=True)
 
+        if not model_path:
+            st.error("尚未提供模型檔。請在側邊欄選擇 outputs/*.keras 或上傳模型。")
+            st.stop()
+        model_path = Path(model_path)
+        if not model_path.exists():
+            st.error(f"找不到模型檔：{model_path}")
+            st.stop()
         try:
-            model = load_model(Path(model_path))
-        except FileNotFoundError as e:
-            st.error(str(e))
-            return
+            model = load_model(model_path)
+        except Exception as e:
+            st.error(f"模型載入失敗：{e}")
+            st.stop()
 
         with st.spinner("模型推論中..."):
             prob = predict(image, model)
@@ -323,7 +361,7 @@ def main() -> None:
                 overlay = None
                 st.warning(f"Grad-CAM 生成失敗：{e}")
 
-        prob_display = 1 - prob if 'invert_pred' in locals() and invert_pred else prob
+        prob_display = 1 - prob if invert_pred else prob
         has_cactus = prob_display >= threshold
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:

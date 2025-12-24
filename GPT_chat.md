@@ -59,3 +59,5 @@ Q20: 請將與你的對話存入 GPT_chat.md，並回報 Streamlit 部署時 ten
 A20: 已追加對話記錄，新增 runtime.txt 指定 python-3.10 以支援 tensorflow==2.10.1。
 Q21: Streamlit 部署顯示 Python 3.13.9，tensorflow==2.10.1 無相容版本。
 A21: 已更新 requirements.txt 改為 tensorflow==2.20.0，並調整 numpy/protobuf/streamlit/altair 以支援 Python 3.13。
+Q22: Streamlit 部署找不到 outputs/cnn.keras，載入模型時失敗。
+A22: 已更新 streamlit_app.py，加入模型上傳與缺檔提示，並改用絕對路徑避免找不到檔案。
