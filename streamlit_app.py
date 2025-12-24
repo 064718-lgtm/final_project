@@ -10,6 +10,7 @@ Theme: 利用空拍影像進行氣候變遷預警之平台
 from __future__ import annotations
 
 import io
+import os
 import tempfile
 import zipfile
 from pathlib import Path
@@ -26,6 +27,7 @@ MODEL_UPLOAD_DIR = Path(tempfile.gettempdir()) / "cactus_models"
 DEFAULT_MODEL_PATH = OUTPUTS_DIR / "vgg16.keras"
 IMAGE_SIZE = (96, 96)
 DEFAULT_THRESHOLD = 0.5
+DEFAULT_LLM_MODEL = "gpt-4o-mini"
 
 
 @st.cache_resource(
@@ -82,6 +84,87 @@ def coerce_hdf5_path(model_path: Path) -> Path:
     if not h5_path.exists() or h5_path.stat().st_mtime_ns < model_path.stat().st_mtime_ns:
         h5_path.write_bytes(model_path.read_bytes())
     return h5_path
+
+
+def get_secret_value(name: str) -> str | None:
+    try:
+        return st.secrets.get(name)
+    except Exception:
+        return None
+
+
+def get_setting(name: str) -> str | None:
+    return get_secret_value(name) or os.getenv(name)
+
+
+def default_climate_advice(has_cactus: bool) -> str:
+    if has_cactus:
+        return (
+            "目前氣候變遷壓力不嚴重，但仍需注意可能影響該地區環境的跡象：\n"
+            "- 乾旱期延長或降雨變得不穩定\n"
+            "- 植被覆蓋下降、裸地比例增加\n"
+            "- 土壤含水降低、地表龜裂或沙化\n"
+            "- 水源補給減少或水質惡化\n"
+            "若上述趨勢持續，可能逐步削弱當地生態韌性。"
+        )
+    return (
+        "目前氣候變遷壓力偏高，建議立即採取處置以避免更嚴重的情況：\n"
+        "- 啟動水資源管理與節水措施\n"
+        "- 進行棲地/植被復育，減少土地擾動\n"
+        "- 建立土壤含水、植被覆蓋的監測機制\n"
+        "- 設置早期預警與社區協作應變\n"
+        "透過持續監測與介入可降低退化風險。"
+    )
+
+
+def generate_llm_advice(
+    has_cactus: bool,
+    prob: float,
+    threshold: float,
+    model_name: str,
+) -> tuple[str | None, str | None]:
+    api_key = get_setting("OPENAI_API_KEY")
+    if not api_key:
+        return None, "未設定 OPENAI_API_KEY"
+    try:
+        from openai import OpenAI
+    except Exception:
+        return None, "尚未安裝 openai 套件"
+
+    model = get_setting("OPENAI_MODEL") or DEFAULT_LLM_MODEL
+    base_url = get_setting("OPENAI_BASE_URL")
+    client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+    status = "檢測到仙人掌" if has_cactus else "未檢測到仙人掌"
+    severity = "不嚴重" if has_cactus else "嚴重"
+    system_prompt = (
+        "你是環境風險分析師。請用繁體中文、3-5 點條列，提供簡短結論與建議。"
+        "若檢測到仙人掌，說明氣候變遷不嚴重，但需注意可能影響該地區環境的跡象。"
+        "若未檢測到仙人掌，說明氣候變遷嚴重，需提出處置措施以避免更嚴重情況。"
+        "語氣務實、避免誇大或恐嚇，不要提及醫療或法律。"
+    )
+    user_prompt = (
+        f"模型: {model_name}\n"
+        f"結果: {status}\n"
+        f"判定: 氣候變遷{severity}\n"
+        f"機率: {prob:.2f}\n"
+        f"閾值: {threshold:.2f}"
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.4,
+            max_tokens=220,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise ValueError("LLM 未回傳內容")
+        return content.strip(), None
+    except Exception as e:
+        return None, str(e)
 
 
 def preprocess_image(img: Image.Image) -> np.ndarray:
@@ -321,6 +404,13 @@ def main() -> None:
             step=0.05,
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
+        llm_api_key = get_setting("OPENAI_API_KEY")
+        llm_model = get_setting("OPENAI_MODEL") or DEFAULT_LLM_MODEL
+        enable_llm = st.checkbox("啟用 LLM 氣候解讀", value=bool(llm_api_key))
+        if enable_llm:
+            st.caption(f"LLM 模型：{llm_model}")
+            if not llm_api_key:
+                st.warning("尚未設定 OPENAI_API_KEY，將使用預設文字。")
         st.markdown(
             "操作步驟：\n"
             "1) 在這裡選擇模型檔（`outputs/*.keras`/`outputs/*.h5`）或上傳模型。\n"
@@ -396,6 +486,23 @@ def main() -> None:
                 "檢查棲地/灌溉/植被管理狀態，並評估是否需補植或加強保育行動。"
             )
         st.markdown("</div>", unsafe_allow_html=True)
+
+        advice_text = None
+        llm_error = None
+        if enable_llm:
+            advice_text, llm_error = generate_llm_advice(
+                has_cactus=has_cactus,
+                prob=prob_display,
+                threshold=threshold,
+                model_name=model_path.name,
+            )
+        if not advice_text:
+            advice_text = default_climate_advice(has_cactus)
+
+        st.markdown("#### 氣候變遷解讀")
+        st.markdown(advice_text)
+        if llm_error and enable_llm:
+            st.caption(f"LLM 生成失敗，已改用預設文字：{llm_error}")
 
         st.markdown("#### Grad-CAM 關注熱力圖")
         if overlay is not None:
