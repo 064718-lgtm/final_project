@@ -163,16 +163,16 @@ def load_model_by_weights(model_path: Path) -> tf.keras.Model:
     resolved_path = resolve_hdf5_path(model_path, for_weights=True)
     try:
         model.load_weights(resolved_path)
-    except Exception as e:
-        if resolved_path != model_path:
-            try:
-                model.load_weights(model_path)
-                return model
-            except Exception:
-                pass
+    except Exception:
         try:
             model.load_weights(resolved_path, by_name=True, skip_mismatch=True)
-        except Exception:
+        except Exception as e:
+            if resolved_path != model_path:
+                try:
+                    model.load_weights(model_path, by_name=True, skip_mismatch=True)
+                    return model
+                except Exception:
+                    pass
             raise e
     return model
 
@@ -290,9 +290,9 @@ def coerce_hdf5_path(model_path: Path) -> Path:
 
 def resolve_hdf5_path(model_path: Path, *, for_weights: bool = False) -> Path:
     if model_path.suffix.lower() == ".keras" and is_hdf5_file(model_path):
-        if for_weights:
-            return model_path
         h5_path = coerce_hdf5_path(model_path)
+        if for_weights:
+            return h5_path if validate_hdf5_file(h5_path) else model_path
         if validate_hdf5_file(h5_path):
             return h5_path
     return model_path
