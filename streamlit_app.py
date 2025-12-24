@@ -160,11 +160,20 @@ def load_model_by_weights(model_path: Path) -> tf.keras.Model:
     file_type = detect_model_file_type(model_path)
     if file_type != "hdf5":
         raise ValueError(f"weights-only load requires HDF5, got {file_type}")
-    resolved_path = resolve_hdf5_path(model_path)
+    resolved_path = resolve_hdf5_path(model_path, for_weights=True)
     try:
         model.load_weights(resolved_path)
-    except Exception:
-        model.load_weights(resolved_path, by_name=True, skip_mismatch=True)
+    except Exception as e:
+        if resolved_path != model_path:
+            try:
+                model.load_weights(model_path)
+                return model
+            except Exception:
+                pass
+        try:
+            model.load_weights(resolved_path, by_name=True, skip_mismatch=True)
+        except Exception:
+            raise e
     return model
 
 
@@ -279,9 +288,13 @@ def coerce_hdf5_path(model_path: Path) -> Path:
     return h5_path
 
 
-def resolve_hdf5_path(model_path: Path) -> Path:
+def resolve_hdf5_path(model_path: Path, *, for_weights: bool = False) -> Path:
     if model_path.suffix.lower() == ".keras" and is_hdf5_file(model_path):
-        return coerce_hdf5_path(model_path)
+        if for_weights:
+            return model_path
+        h5_path = coerce_hdf5_path(model_path)
+        if validate_hdf5_file(h5_path):
+            return h5_path
     return model_path
 
 
@@ -851,6 +864,11 @@ def main() -> None:
             on_click=request_llm_advice,
         )
         st.caption("按下「生成改善建議」以產生 LLM 建議（需設定 OPENAI_API_KEY）。")
+        api_key = get_openai_api_key()
+        if api_key:
+            st.caption(f"OpenAI 已就緒（模型：{OPENAI_MODEL}）。")
+        else:
+            st.warning("尚未設定 OPENAI_API_KEY，將改用預設文字。")
 
         current_llm_meta = {
             "prediction_meta": prediction_meta,
