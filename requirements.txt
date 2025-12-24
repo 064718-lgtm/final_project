@@ -6,4 +6,3 @@ scikit-learn>=1.2
 pillow>=9.4
 streamlit>=1.39
 altair>=5
-openai>=1.0.0

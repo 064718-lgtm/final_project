@@ -71,3 +71,5 @@ Q26: 請移除「選 Demo 影像」功能。
 A26: 已刪除 Demo 選擇與相關說明，改為僅支援上傳影像。
 Q27: 請串接可部署在 Streamlit Cloud 的 LLM，依仙人掌偵測結果產生氣候變遷建議。
 A27: 已加入 OpenAI LLM 生成氣候解讀（可選），並提供預設建議與 Secrets 設定說明。
+Q28: 不要使用 API key。
+A28: 已移除 LLM API 呼叫與 openai 依賴，改為本地規則化氣候解讀文字。
