@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import re
 import time
 import tempfile
@@ -29,7 +30,7 @@ MODEL_UPLOAD_DIR = Path(tempfile.gettempdir()) / "cactus_models"
 DEFAULT_MODEL_PATH = OUTPUTS_DIR / "vgg16.keras"
 IMAGE_SIZE = (96, 96)
 DEFAULT_THRESHOLD = 0.5
-LOCAL_LLM_MODEL_ID = "uer/gpt2-chinese-cluecorpussmall"
+OPENAI_MODEL = "gpt-5-nano"
 HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
 LFS_SIGNATURE = b"version https://git-lfs.github.com/spec/v1"
@@ -304,27 +305,22 @@ def default_climate_advice(has_cactus: bool) -> str:
     )
 
 
-@cache_resource_compat(show_spinner=False, allow_output_mutation=True)
-def load_local_llm(model_id: str):
-    from transformers import AutoModelForCausalLM, AutoTokenizer
-
-    tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=False)
-    model = AutoModelForCausalLM.from_pretrained(model_id)
-    model.eval()
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    return model, tokenizer
+def get_openai_api_key() -> str | None:
+    try:
+        if "OPENAI_API_KEY" in st.secrets:
+            return str(st.secrets["OPENAI_API_KEY"])
+    except Exception:
+        pass
+    return os.getenv("OPENAI_API_KEY")
 
 
-def get_cached_llm(model_id: str):
-    cache = st.session_state.get("llm_cache", {})
-    entry = cache.get(model_id)
-    if entry:
-        return entry
-    model, tokenizer = load_local_llm(model_id)
-    cache[model_id] = (model, tokenizer)
-    st.session_state["llm_cache"] = cache
-    return model, tokenizer
+def get_openai_client():
+    api_key = get_openai_api_key()
+    if not api_key:
+        raise ValueError("未設定 OPENAI_API_KEY")
+    from openai import OpenAI
+
+    return OpenAI(api_key=api_key)
 
 
 def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
@@ -337,7 +333,6 @@ def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name
         f"參考：模型={model_name}，機率={prob:.2f}，閾值={threshold:.2f}。\n"
         "請直接輸出建議：\n"
     )
-
 
 def format_llm_output(text: str) -> str:
     if not text:
@@ -380,39 +375,36 @@ def format_llm_output(text: str) -> str:
         unique_lines.append(line)
     return "\n".join(f"- {line}" for line in unique_lines[:5])
 
-def generate_local_advice(
+def generate_openai_advice(
     has_cactus: bool,
     prob: float,
     threshold: float,
     model_name: str,
-    model_id: str,
 ) -> tuple[str | None, str | None]:
     try:
-        model, tokenizer = get_cached_llm(model_id)
+        client = get_openai_client()
     except Exception as e:
         return None, str(e)
     prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
     for attempt in range(2):
-        inputs = tokenizer(prompt, return_tensors="pt")
         try:
-            output_ids = model.generate(
-                **inputs,
-                max_new_tokens=120 if attempt == 0 else 96,
-                do_sample=attempt == 0,
-                temperature=0.7,
-                top_p=0.9,
-                repetition_penalty=1.2,
-                no_repeat_ngram_size=3,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
-            generated = tokenizer.decode(
-                output_ids[0][inputs["input_ids"].shape[1] :],
-                skip_special_tokens=True,
+            response = client.responses.create(
+                model=OPENAI_MODEL,
+                input=prompt,
+                store=False,
             )
         except Exception as e:
             return None, str(e)
-        formatted = format_llm_output(generated)
+        output_text = getattr(response, "output_text", "") or ""
+        if not output_text and getattr(response, "output", None):
+            parts = []
+            for item in response.output:
+                for content in getattr(item, "content", []) or []:
+                    text = getattr(content, "text", None)
+                    if text:
+                        parts.append(text)
+            output_text = "\n".join(parts)
+        formatted = format_llm_output(output_text)
         if formatted:
             return formatted, None
         prompt = (
@@ -420,7 +412,6 @@ def generate_local_advice(
             + "注意：不要出現「輸入」「輸出」「範例」字樣，只要列點。\n"
         )
     return None, "LLM 輸出為空"
-
 
 def compute_image_hash(data: bytes | None) -> str | None:
     if not data:
@@ -859,7 +850,7 @@ def main() -> None:
             type="primary",
             on_click=request_llm_advice,
         )
-        st.caption("按下「生成改善建議」以產生 LLM 建議。")
+        st.caption("按下「生成改善建議」以產生 LLM 建議（需設定 OPENAI_API_KEY）。")
 
         current_llm_meta = {
             "prediction_meta": prediction_meta,
@@ -871,12 +862,11 @@ def main() -> None:
             advice_text = None
             llm_error = None
             if enable_llm:
-                advice_text, llm_error = generate_local_advice(
+                advice_text, llm_error = generate_openai_advice(
                     has_cactus=has_cactus,
                     prob=prediction["prob_display"],
                     threshold=threshold,
                     model_name=prediction["model_name"],
-                    model_id=LOCAL_LLM_MODEL_ID,
                 )
             if not advice_text:
                 advice_text = default_climate_advice(has_cactus)
