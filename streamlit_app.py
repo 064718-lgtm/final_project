@@ -328,38 +328,47 @@ def get_cached_llm(model_id: str):
 
 
 def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
-    status = "??????" if has_cactus else "???????"
-    severity = "???????" if has_cactus else "??????"
+    status = "檢測到仙人掌" if has_cactus else "未檢測到仙人掌"
+    severity = "氣候變遷不嚴重" if has_cactus else "氣候變遷嚴重"
     return (
-        "??????????????????? 3-5 ??????\n"
-        "????- ??????????????????\n"
-        f"???{status}?{severity}?"
-        f"?????={model_name}???={prob:.2f}???={threshold:.2f}?\n"
-        "????????\n"
+        "你是氣候變遷風險顧問，請用繁體中文輸出 3-5 點改善建議。\n"
+        "每點以「- 」開頭，句子簡短，避免重複或範例文字。\n"
+        f"情境：{status}，{severity}。\n"
+        f"參考：模型={model_name}，機率={prob:.2f}，閾值={threshold:.2f}。\n"
+        "請直接輸出建議：\n"
     )
+
 
 def format_llm_output(text: str) -> str:
     if not text:
         return ""
-    bad_tokens = ("??", "? ?", "??", "??", "??=", "??", "??")
-    if sum(token in text for token in bad_tokens) >= 2:
-        return ""
+    strip_tokens = ("輸入：", "輸出：", "輸入", "輸出")
+    drop_tokens = ("範例", "模型=", "機率", "閾值")
     text = text.replace("\r", "\n")
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     cleaned: list[str] = []
     for line in lines:
-        if any(token in line for token in bad_tokens):
+        for token in strip_tokens:
+            line = line.replace(token, "")
+        if any(token in line for token in drop_tokens):
             continue
-        line = re.sub(r"^[-?\s\d\.?)?]+", "", line).strip()
+        line = re.sub(r"^[-•\s\d\.、)）]+", "", line).strip()
         if len(line) < 6:
             continue
         cleaned.append(line)
     if not cleaned:
-        parts = re.split(r"[???!?;?\n]", text)
+        parts = re.split(r"[。！？!?;；\n]", text)
         parts = [p.strip() for p in parts if p.strip()]
-        parts = [p for p in parts if not any(token in p for token in bad_tokens)]
-        cleaned = [p for p in parts if len(p) >= 6]
-    if len(cleaned) < 2:
+        cleaned = []
+        for part in parts:
+            for token in strip_tokens:
+                part = part.replace(token, "")
+            if any(token in part for token in drop_tokens):
+                continue
+            part = part.strip()
+            if len(part) >= 6:
+                cleaned.append(part)
+    if not cleaned:
         return ""
     unique_lines = []
     seen = set()
@@ -383,29 +392,34 @@ def generate_local_advice(
     except Exception as e:
         return None, str(e)
     prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
-    inputs = tokenizer(prompt, return_tensors="pt")
-    try:
-        output_ids = model.generate(
-            **inputs,
-            max_new_tokens=120,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9,
-            repetition_penalty=1.2,
-            no_repeat_ngram_size=3,
-            pad_token_id=tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
-        generated = tokenizer.decode(
-            output_ids[0][inputs["input_ids"].shape[1] :],
-            skip_special_tokens=True,
-        )
+    for attempt in range(2):
+        inputs = tokenizer(prompt, return_tensors="pt")
+        try:
+            output_ids = model.generate(
+                **inputs,
+                max_new_tokens=120 if attempt == 0 else 96,
+                do_sample=attempt == 0,
+                temperature=0.7,
+                top_p=0.9,
+                repetition_penalty=1.2,
+                no_repeat_ngram_size=3,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
+            generated = tokenizer.decode(
+                output_ids[0][inputs["input_ids"].shape[1] :],
+                skip_special_tokens=True,
+            )
+        except Exception as e:
+            return None, str(e)
         formatted = format_llm_output(generated)
-        if not formatted:
-            return None, "LLM 輸出為空"
-        return formatted, None
-    except Exception as e:
-        return None, str(e)
+        if formatted:
+            return formatted, None
+        prompt = (
+            build_llm_prompt(has_cactus, prob, threshold, model_name)
+            + "注意：不要出現「輸入」「輸出」「範例」字樣，只要列點。\n"
+        )
+    return None, "LLM 輸出為空"
 
 
 def compute_image_hash(data: bytes | None) -> str | None:
