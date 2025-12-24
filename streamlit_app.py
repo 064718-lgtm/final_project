@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
 import time
 import tempfile
 import zipfile
@@ -327,50 +328,48 @@ def get_cached_llm(model_id: str):
 
 
 def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
-    status = "檢測到仙人掌" if has_cactus else "未檢測到仙人掌"
-    severity = "氣候變遷不嚴重" if has_cactus else "氣候變遷嚴重"
+    status = "??????" if has_cactus else "???????"
+    severity = "???????" if has_cactus else "??????"
     return (
-        "你是環境風險分析師。請用繁體中文輸出 3-5 點條列建議。\n"
-        "必須包含結論（氣候變遷不嚴重/嚴重）與後續注意跡象或處置措施。\n"
-        "範例：\n"
-        "輸入：檢測到仙人掌\n"
-        "輸出：\n"
-        "- 氣候變遷不嚴重，但需注意乾旱期延長\n"
-        "- 觀察植被覆蓋是否下降\n"
-        "輸入：未檢測到仙人掌\n"
-        "輸出：\n"
-        "- 氣候變遷嚴重，建議啟動節水與復育\n"
-        "- 加強土壤含水與植被監測\n"
-        "現在輸入：\n"
-        f"模型={model_name}；結果={status}；機率={prob:.2f}；閾值={threshold:.2f}\n"
-        f"結論：{severity}\n"
-        "輸出：\n"
+        "??????????????????? 3-5 ??????\n"
+        "????- ??????????????????\n"
+        f"???{status}?{severity}?"
+        f"?????={model_name}???={prob:.2f}???={threshold:.2f}?\n"
+        "????????\n"
     )
-
 
 def format_llm_output(text: str) -> str:
     if not text:
         return ""
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    bullet_lines = [
-        line
-        for line in lines
-        if line.startswith(("-", "•", "1.", "2.", "3.", "4.", "5."))
-    ]
-    if bullet_lines:
-        return "\n".join(bullet_lines[:5])
-    parts = (
-        text.replace("。", "。\n")
-        .replace("！", "！\n")
-        .replace("？", "？\n")
-        .splitlines()
-    )
-    parts = [p.strip() for p in parts if p.strip()]
-    if not parts:
+    bad_tokens = ("??", "? ?", "??", "??", "??=", "??", "??")
+    if sum(token in text for token in bad_tokens) >= 2:
         return ""
-    parts = parts[:5]
-    return "\n".join(f"- {p}" for p in parts)
-
+    text = text.replace("\r", "\n")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    cleaned: list[str] = []
+    for line in lines:
+        if any(token in line for token in bad_tokens):
+            continue
+        line = re.sub(r"^[-?\s\d\.?)?]+", "", line).strip()
+        if len(line) < 6:
+            continue
+        cleaned.append(line)
+    if not cleaned:
+        parts = re.split(r"[???!?;?\n]", text)
+        parts = [p.strip() for p in parts if p.strip()]
+        parts = [p for p in parts if not any(token in p for token in bad_tokens)]
+        cleaned = [p for p in parts if len(p) >= 6]
+    if len(cleaned) < 2:
+        return ""
+    unique_lines = []
+    seen = set()
+    for line in cleaned:
+        key = line[:24]
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_lines.append(line)
+    return "\n".join(f"- {line}" for line in unique_lines[:5])
 
 def generate_local_advice(
     has_cactus: bool,
@@ -388,10 +387,12 @@ def generate_local_advice(
     try:
         output_ids = model.generate(
             **inputs,
-            max_new_tokens=160,
+            max_new_tokens=120,
             do_sample=True,
             temperature=0.7,
             top_p=0.9,
+            repetition_penalty=1.2,
+            no_repeat_ngram_size=3,
             pad_token_id=tokenizer.eos_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
@@ -705,25 +706,8 @@ def main() -> None:
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
 
-        st.markdown("**氣候解讀**")
-        st.caption("啟用本地輕量模型，生成改善建議。")
-        enable_llm = st.checkbox(
-            "啟用氣候解讀",
-            value=True,
-            key="enable_llm",
-            on_change=reset_advice_state,
-        )
-        if enable_llm:
-            st.caption("首次啟用會下載模型，可能需要 1-2 分鐘。")
-
-        show_gradcam = st.checkbox(
-            "顯示 Grad-CAM 熱力圖",
-            value=False,
-            key="show_gradcam",
-            on_change=reset_gradcam_state,
-        )
-        if show_gradcam:
-            st.caption("啟用 Grad-CAM 會增加計算時間。")
+        enable_llm = True
+        show_gradcam = True
 
         st.markdown("---")
         st.markdown(
