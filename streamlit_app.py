@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import time
 import tempfile
 import zipfile
 from pathlib import Path
@@ -28,6 +29,7 @@ DEFAULT_MODEL_PATH = OUTPUTS_DIR / "vgg16.keras"
 IMAGE_SIZE = (96, 96)
 DEFAULT_THRESHOLD = 0.5
 LOCAL_LLM_MODEL_ID = "uer/gpt2-chinese-cluecorpussmall"
+HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
 
 
 def cache_resource_compat(**kwargs):
@@ -113,14 +115,17 @@ def load_model(model_path: Path) -> tf.keras.Model:
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found at {model_path}")
     custom_objects = build_custom_objects()
+    resolved_path = resolve_hdf5_path(model_path)
     try:
         return tf.keras.models.load_model(
-            model_path,
+            resolved_path,
             compile=False,
             custom_objects=custom_objects,
             safe_mode=False,
         )
     except ValueError:
+        if resolved_path != model_path:
+            raise
         if model_path.suffix.lower() == ".keras" and is_hdf5_file(model_path):
             h5_path = coerce_hdf5_path(model_path)
             try:
@@ -139,7 +144,7 @@ def load_model(model_path: Path) -> tf.keras.Model:
         raise
     except TypeError:
         return tf.keras.models.load_model(
-            model_path,
+            resolved_path,
             compile=False,
             custom_objects=custom_objects,
         )
@@ -154,7 +159,11 @@ def load_model_by_weights(model_path: Path) -> tf.keras.Model:
         model = build_cnn_infer(input_shape)
     else:
         raise ValueError("Unsupported model name for weight loading.")
-    model.load_weights(model_path)
+    resolved_path = resolve_hdf5_path(model_path)
+    try:
+        model.load_weights(resolved_path)
+    except Exception:
+        model.load_weights(resolved_path, by_name=True, skip_mismatch=True)
     return model
 
 
@@ -168,10 +177,17 @@ def get_cached_model(model_path: Path) -> tf.keras.Model:
     entry = cache.get(key)
     if entry and entry.get("meta") == meta:
         return entry["model"]
+    start = time.perf_counter()
     try:
+        print(f"[model] loading by weights: {model_path}")
         model = load_model_by_weights(model_path)
-    except Exception:
+        method = "weights"
+    except Exception as e:
+        print(f"[model] weights load failed: {e}; fallback to full load")
         model = load_model(model_path)
+        method = "full"
+    elapsed = time.perf_counter() - start
+    st.session_state["model_load_info"] = f"{method} load {elapsed:.2f}s"
     cache[key] = {"meta": meta, "model": model}
     st.session_state["model_cache"] = cache
     return model
@@ -193,15 +209,23 @@ def save_uploaded_model(uploaded_file) -> Path:
     return model_path
 
 
+def looks_like_hdf5(model_path: Path) -> bool:
+    try:
+        with model_path.open("rb") as handle:
+            return handle.read(len(HDF5_SIGNATURE)) == HDF5_SIGNATURE
+    except OSError:
+        return False
+
+
 def is_hdf5_file(model_path: Path) -> bool:
     try:
         import h5py
     except Exception:
-        return False
+        return looks_like_hdf5(model_path)
     try:
         return h5py.is_hdf5(model_path)
     except Exception:
-        return False
+        return looks_like_hdf5(model_path)
 
 
 def coerce_hdf5_path(model_path: Path) -> Path:
@@ -211,6 +235,12 @@ def coerce_hdf5_path(model_path: Path) -> Path:
     if not h5_path.exists() or h5_path.stat().st_mtime_ns < model_path.stat().st_mtime_ns:
         h5_path.write_bytes(model_path.read_bytes())
     return h5_path
+
+
+def resolve_hdf5_path(model_path: Path) -> Path:
+    if model_path.suffix.lower() == ".keras" and is_hdf5_file(model_path):
+        return coerce_hdf5_path(model_path)
+    return model_path
 
 
 def default_climate_advice(has_cactus: bool) -> str:
@@ -609,6 +639,9 @@ def main() -> None:
             model_path = save_uploaded_model(uploaded_model)
         elif model_select:
             model_path = Path(model_select)
+        load_info = st.session_state.get("model_load_info")
+        if load_info:
+            st.caption(f"上次載入：{load_info}")
 
         st.markdown("**判定門檻**")
         st.caption("機率高於門檻時，視為偵測到仙人掌。")
