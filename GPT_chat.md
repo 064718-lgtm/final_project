@@ -57,3 +57,5 @@ Q19: UI 判讀邏輯修正（偵測到＝氣候壓力暫不嚴重；未偵測到
 A19: 更新 streamlit_app 判讀提示與 README 說明，並推送更新。
 Q20: 請將與你的對話存入 GPT_chat.md，並回報 Streamlit 部署時 tensorflow==2.10.1 找不到版本。
 A20: 已追加對話記錄，新增 runtime.txt 指定 python-3.10 以支援 tensorflow==2.10.1。
+Q21: Streamlit 部署顯示 Python 3.13.9，tensorflow==2.10.1 無相容版本。
+A21: 已更新 requirements.txt 改為 tensorflow==2.20.0，並調整 numpy/protobuf/streamlit/altair 以支援 Python 3.13。
