@@ -22,7 +22,6 @@ from PIL import Image
 # Configuration
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
-DEMO_DIR = BASE_DIR / "DEMO"
 MODEL_UPLOAD_DIR = Path(tempfile.gettempdir()) / "cactus_models"
 DEFAULT_MODEL_PATH = OUTPUTS_DIR / "vgg16.keras"
 IMAGE_SIZE = (96, 96)
@@ -208,17 +207,6 @@ def list_sample_ids(limit: int = 8):
     return []
 
 
-def load_demo_image(demo_key: str) -> bytes | None:
-    mapping = {
-        "DEMO_無仙人掌": DEMO_DIR / "0.jpg",
-        "DEMO_有仙人掌": DEMO_DIR / "1.jpg",
-    }
-    path = mapping.get(demo_key)
-    if path and path.exists():
-        return path.read_bytes()
-    return None
-
-
 def load_sample_image(file_id: str) -> bytes | None:
     candidates = [
         BASE_DIR / "test" / file_id,
@@ -333,41 +321,26 @@ def main() -> None:
             step=0.05,
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
-        preset_options = ["DEMO_無仙人掌", "DEMO_有仙人掌"]
-        sample_choice = st.selectbox(
-            "Demo 範例影像（固定 DEMO/0.jpg 與 DEMO/1.jpg）",
-            options=["(上傳自選)"] + preset_options,
-        )
         st.markdown(
             "操作步驟：\n"
             "1) 在這裡選擇模型檔（`outputs/*.keras`/`outputs/*.h5`）或上傳模型。\n"
-            "2) 若要快速展示，可在下方選擇 DEMO 範例影像（DEMO/0=無仙人掌，DEMO/1=有仙人掌）。\n"
-            "3) 或切換到主畫面上傳 JPG/PNG。\n"
-            "4) 按下「開始預測」後才會進行推論與顯示結果。"
+            "2) 在主畫面上傳 JPG/PNG。\n"
+            "3) 按下「開始預測」後才會進行推論與顯示結果。"
         )
 
     st.markdown("### 上傳影像")
     st.caption("支援 JPG/PNG，建議使用清晰、光線充足的空拍視角。")
     uploaded = st.file_uploader("選擇一張影像", type=["jpg", "jpeg", "png"])
-    use_demo = sample_choice and sample_choice != "(上傳自選)"
-
     image = None
     image_caption = ""
-    if use_demo:
-        sample_bytes = load_demo_image(sample_choice)
-        if sample_bytes:
-            image = Image.open(io.BytesIO(sample_bytes))
-            image_caption = f"範例影像：{sample_choice}"
-        else:
-            st.warning("找不到 DEMO 範例影像，請確認 DEMO/0.jpg 與 DEMO/1.jpg 是否存在。")
-    elif uploaded:
+    if uploaded:
         image = Image.open(io.BytesIO(uploaded.read()))
         image_caption = "上傳影像預覽"
 
     if image:
         st.image(image, caption=image_caption, use_column_width=True)
     else:
-        st.info("請上傳影像，或在側邊欄選擇範例影像。")
+        st.info("請上傳影像。")
 
     if not model_path:
         st.info("請先在側邊欄選擇 outputs/*.keras 或上傳模型檔。")

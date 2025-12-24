@@ -6,7 +6,7 @@
 
 ## 專案內容
 - `cactus_training.py`：訓練/推論腳本，含簡易 CNN 與 VGG16 轉移學習。
-- `streamlit_app.py`：上傳/DEMO 推論介面，顯示機率、判定、Grad-CAM 熱力圖與暖化提醒。
+- `streamlit_app.py`：上傳影像推論介面，顯示機率、判定、Grad-CAM 熱力圖與暖化提醒。
 - `requirements.txt`：相依套件。
 - `.gitignore`：忽略資料集、模型等大型檔案。
 - `GPT_chat.md`：對話紀錄摘要。
@@ -22,7 +22,6 @@
 ## 資料集
 - 下載來源（Kaggle）：https://www.kaggle.com/code/shahules/getting-started-with-cnn-and-vgg16
 - 放置方式：將 `train.zip`、`test.zip` 置於專案根目錄，或解壓成平坦資料夾 `train/`、`test/`（同樣位於根目錄）。  
-- DEMO 影像：`DEMO/0.jpg`（無仙人掌）、`DEMO/1.jpg`（有仙人掌）。  
 - 注意：資料集與大型檔案已列入 `.gitignore`，請勿提交；若曾提交，請自行清理版本史後再推送。
 
 ## 批次訓練/輸出
@@ -35,14 +34,14 @@ python cactus_training.py --batch-size 64 --image-size 96 --epochs-cnn 8 --epoch
 ```
 streamlit run streamlit_app.py
 ```
-- 側邊欄：選擇 `outputs/*.keras` 模型、選 DEMO 影像或上傳 JPG/PNG、調整閾值。
+- 側邊欄：選擇 `outputs/*.keras`/`outputs/*.h5` 模型或上傳模型，主畫面上傳 JPG/PNG、調整閾值。
 - 結果：顯示仙人掌機率與判定、Grad-CAM 熱力圖覆蓋、暖化風險提示。
 - 判讀：偵測到仙人掌 → 環境壓力暫不嚴重；未檢測到 → 觸發氣候變遷警示並建議檢查灌溉/植被。
 - 介面風格：柔和粉彩、暖白背景的 eco-tech 儀表板，適合長時間閱讀。
 
 ### Streamlit 預測結果示意
-- `UI_demo0.png`：載入 DEMO/0.jpg（無仙人掌）時的預測畫面。
-- `UI_demo1.png`：載入 DEMO/1.jpg（有仙人掌）時的預測畫面。
+- `UI_demo0.png`：Streamlit 預測畫面示意。
+- `UI_demo1.png`：Streamlit 預測畫面示意。
 ![UI_demo0](UI_demo0.png)
 ![UI_demo1](UI_demo1.png)
 
