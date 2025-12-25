@@ -1,7 +1,7 @@
 # CRISP-DM 報告：空拍仙人掌辨識與氣候風險提示
 
 ## 1. 商業理解（Business Understanding）
-- 目標：以空拍影像辨識是否存在仙人掌，作為環境韌性與氣候風險的參考指標，並提供可讀的風險提醒與改善建議。
+- 目標：以空拍影像辨識是否存在仙人掌，作為環境韌性與氣候風險的參考指標，並提供可讀的風險提醒與氣候變遷防治對話建議。
 - 使用情境：提供環境監測或地方管理者快速判讀影像的工具，降低人工篩檢負擔。
 - 成功標準：
   - 影像分類表現穩定（準確率/AUC 具可用性）。
@@ -49,13 +49,14 @@
 ## 6. 部署（Deployment）
 - 介面：Streamlit
   - 上傳影像後自動推論，顯示機率、判定、Grad-CAM。
-  - 「開始預測」按鈕觸發 LLM 改善建議（本地輕量模型，不需 API key）。
+  - 「生成改善建議」作為對話起點，氣候變遷防治BOT 可持續追問。
+  - 內建主題守門：離題問題不予回答。
   - 支援選擇或上傳模型檔（`.keras`/`.h5`）。
 - 依賴：
-  - `tensorflow`、`streamlit`、`torch`、`transformers` 等（詳見 `requirements.txt`）。
+  - `tensorflow`、`streamlit`、`google-genai`/`google-generativeai` 等（詳見 `requirements.txt`）。
 - 部署注意：
   - 模型權重需放在 `outputs/` 或透過 UI 上傳。
-  - 本地 LLM 需下載模型，首次啟用較慢。
+  - Gemini 需設定 `GEMINI_API_KEY` 或 `GOOGLE_API_KEY`（未設定時改用預設文字）。
 
 ## 7. 後續建議（Maintenance）
 - 持續收集新影像，定期重新訓練以提升泛化能力。
