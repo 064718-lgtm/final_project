@@ -36,6 +36,7 @@ GEMINI_MODEL_CANDIDATES = (
     "gemini-1.5-flash",
     "gemini-1.5-pro",
     "gemini-1.0-pro",
+    "gemini-pro",
 )
 HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
@@ -402,6 +403,54 @@ def should_try_next_model(err: Exception) -> bool:
     )
 
 
+def normalize_gemini_model_name(name: str) -> str:
+    if not name:
+        return ""
+    name = name.strip()
+    if name.startswith("models/"):
+        return name.split("/", 1)[1]
+    return name
+
+
+def list_gemini_models(backend_type: str, backend) -> list[str]:
+    try:
+        if backend_type == "genai":
+            models = backend.models.list()
+        else:
+            models = backend.list_models()
+    except Exception:
+        return []
+    results: list[str] = []
+    for model in models:
+        name = getattr(model, "name", None)
+        if not name:
+            continue
+        methods = (
+            getattr(model, "supported_generation_methods", None)
+            or getattr(model, "supported_actions", None)
+            or getattr(model, "supported_methods", None)
+        )
+        if methods:
+            has_generate = any("generate" in str(m).lower() for m in methods)
+            if not has_generate:
+                continue
+        normalized = normalize_gemini_model_name(str(name))
+        if normalized:
+            results.append(normalized)
+    if results:
+        gemini_only = [m for m in results if "gemini" in m.lower()]
+        if gemini_only:
+            results = gemini_only
+    unique: list[str] = []
+    seen = set()
+    for name in results:
+        if name in seen:
+            continue
+        seen.add(name)
+        unique.append(name)
+    return unique[:10]
+
+
 def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
     status = "檢測到仙人掌" if has_cactus else "未檢測到仙人掌"
     severity = "氣候變遷不嚴重" if has_cactus else "氣候變遷嚴重"
@@ -499,6 +548,7 @@ def generate_gemini_advice(
         return None, explain_gemini_error(e), None
     base_prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
     last_error: Exception | None = None
+    tried_models: set[str] = set()
     for candidate in GEMINI_MODEL_CANDIDATES:
         prompt = base_prompt
         model_error = None
@@ -525,9 +575,32 @@ def generate_gemini_advice(
                     base_prompt
                     + "注意：不要出現「輸入」「輸出」「範例」或模型說明，只要列點。\n"
                 )
+        tried_models.add(candidate)
         if model_error and should_try_next_model(model_error):
             last_error = model_error
             continue
+    if last_error and should_try_next_model(last_error):
+        for candidate in list_gemini_models(backend_type, backend):
+            if candidate in tried_models:
+                continue
+            try:
+                if backend_type == "genai":
+                    response = backend.models.generate_content(
+                        model=candidate,
+                        contents=base_prompt,
+                    )
+                else:
+                    response = backend.GenerativeModel(candidate).generate_content(base_prompt)
+            except Exception as e:
+                last_error = e
+                if should_try_next_model(e):
+                    continue
+                return None, explain_gemini_error(e), None
+            output_text = extract_gemini_text(response)
+            formatted = format_llm_output(output_text)
+            if formatted:
+                return formatted, None, candidate
+        return None, explain_gemini_error(last_error), None
     if last_error:
         return None, explain_gemini_error(last_error), None
     return None, "LLM 輸出為空", None
