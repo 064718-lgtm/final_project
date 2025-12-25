@@ -391,6 +391,16 @@ def format_llm_output(text: str) -> str:
         unique_lines.append(line)
     return "\n".join(f"- {line}" for line in unique_lines[:5])
 
+
+def explain_openai_error(err: Exception) -> str:
+    message = str(err)
+    lowered = message.lower()
+    if "insufficient_quota" in lowered or "exceeded your current quota" in lowered:
+        return "OpenAI 額度不足，請檢查帳務方案或更換可用的 API Key。"
+    if "rate_limit" in lowered or "429" in lowered:
+        return "OpenAI 請求過多，請稍後再試或降低使用頻率。"
+    return message
+
 def generate_openai_advice(
     has_cactus: bool,
     prob: float,
@@ -400,7 +410,7 @@ def generate_openai_advice(
     try:
         client = get_openai_client()
     except Exception as e:
-        return None, str(e)
+        return None, explain_openai_error(e)
     prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
     for attempt in range(2):
         try:
@@ -410,7 +420,7 @@ def generate_openai_advice(
                 store=False,
             )
         except Exception as e:
-            return None, str(e)
+            return None, explain_openai_error(e)
         output_text = getattr(response, "output_text", "") or ""
         if not output_text and getattr(response, "output", None):
             parts = []
@@ -916,7 +926,7 @@ def main() -> None:
         if llm_advice and llm_meta == current_llm_meta:
             st.markdown(llm_advice["text"])
             if llm_advice["error"] and enable_llm:
-                st.caption(f"LLM 生成失敗，已改用預設文字：{llm_advice['error']}")
+                st.caption(f"OpenAI 回應失敗，已改用預設文字：{llm_advice['error']}")
             elif llm_advice["error"] and not enable_llm:
                 st.caption(llm_advice["error"])
         else:
