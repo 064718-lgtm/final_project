@@ -319,6 +319,9 @@ def default_climate_advice(has_cactus: bool) -> str:
 
 
 def get_openai_api_key() -> str | None:
+    key = st.session_state.get("openai_api_key")
+    if key:
+        return str(key).strip()
     try:
         if "OPENAI_API_KEY" in st.secrets:
             return str(st.secrets["OPENAI_API_KEY"])
@@ -723,6 +726,21 @@ def main() -> None:
             label_visibility="collapsed",
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
+
+        st.markdown("**OpenAI API Key**")
+        st.caption("僅保存在此瀏覽器的 session，重新整理需再輸入；部署建議改用 secrets。")
+        api_key_input = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            key="openai_api_key_input",
+            placeholder="sk-...",
+            on_change=reset_advice_state,
+            label_visibility="collapsed",
+        )
+        if api_key_input:
+            st.session_state["openai_api_key"] = api_key_input.strip()
+        else:
+            st.session_state.pop("openai_api_key", None)
 
         enable_llm = True
         show_gradcam = True
