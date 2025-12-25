@@ -6,4 +6,4 @@ scikit-learn>=1.2
 pillow>=9.4
 streamlit>=1.39
 altair>=5
-google-generativeai>=0.7.0
+google-genai>=0.3.0

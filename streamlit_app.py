@@ -318,6 +318,19 @@ def default_climate_advice(has_cactus: bool) -> str:
     )
 
 
+def ensure_importlib_metadata() -> None:
+    try:
+        import importlib.metadata as importlib_metadata
+        if not hasattr(importlib_metadata, "packages_distributions"):
+            try:
+                import importlib_metadata as backport
+                importlib_metadata.packages_distributions = backport.packages_distributions
+            except Exception:
+                importlib_metadata.packages_distributions = lambda: {}
+    except Exception:
+        pass
+
+
 def get_gemini_api_key() -> str | None:
     key = st.session_state.get("gemini_api_key")
     if key:
@@ -332,14 +345,14 @@ def get_gemini_api_key() -> str | None:
     return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 
-def get_gemini_model():
+def get_gemini_client():
     api_key = get_gemini_api_key()
     if not api_key:
         raise ValueError("未設定 GEMINI_API_KEY")
-    import google.generativeai as genai
+    ensure_importlib_metadata()
+    from google import genai
 
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel(GEMINI_MODEL)
+    return genai.Client(api_key=api_key)
 
 
 def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
@@ -399,6 +412,8 @@ def format_llm_output(text: str) -> str:
 def explain_gemini_error(err: Exception) -> str:
     message = str(err)
     lowered = message.lower()
+    if "not found" in lowered or "models/" in lowered or "not supported" in lowered or "generatecontent" in lowered:
+        return "Gemini 模型不存在或不支援，請確認模型名稱。"
     if "resource_exhausted" in lowered or "quota" in lowered or "exceeded" in lowered or "429" in lowered:
         return "Gemini 額度不足或請求過多，請檢查帳務方案或稍後再試。"
     if "api key" in lowered or "unauthorized" in lowered or "permission" in lowered or "403" in lowered or "401" in lowered:
@@ -413,13 +428,16 @@ def generate_gemini_advice(
     model_name: str,
 ) -> tuple[str | None, str | None]:
     try:
-        model = get_gemini_model()
+        client = get_gemini_client()
     except Exception as e:
         return None, explain_gemini_error(e)
     prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
     for attempt in range(2):
         try:
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+            )
         except Exception as e:
             return None, explain_gemini_error(e)
         output_text = getattr(response, "text", "") or ""
