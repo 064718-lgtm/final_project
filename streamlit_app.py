@@ -10,6 +10,7 @@ Theme: 利用空拍影像進行氣候變遷預警之平台
 from __future__ import annotations
 
 import hashlib
+import importlib
 import io
 import os
 import re
@@ -31,6 +32,11 @@ DEFAULT_MODEL_PATH = OUTPUTS_DIR / "vgg16.keras"
 IMAGE_SIZE = (96, 96)
 DEFAULT_THRESHOLD = 0.5
 GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL_CANDIDATES = (
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gemini-1.0-pro",
+)
 HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
 LFS_SIGNATURE = b"version https://git-lfs.github.com/spec/v1"
@@ -345,14 +351,55 @@ def get_gemini_api_key() -> str | None:
     return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 
-def get_gemini_client():
+def get_gemini_backend() -> tuple[str, object]:
     api_key = get_gemini_api_key()
     if not api_key:
         raise ValueError("未設定 GEMINI_API_KEY")
     ensure_importlib_metadata()
-    from google import genai
+    genai_error = None
+    try:
+        genai_sdk = importlib.import_module("google.genai")
+        return "genai", genai_sdk.Client(api_key=api_key)
+    except Exception as exc:
+        genai_error = exc
+    try:
+        genai_legacy = importlib.import_module("google.generativeai")
+        genai_legacy.configure(api_key=api_key)
+        return "legacy", genai_legacy
+    except Exception as exc:
+        if genai_error is not None:
+            raise genai_error
+        raise exc
 
-    return genai.Client(api_key=api_key)
+
+def extract_gemini_text(response) -> str:
+    if response is None:
+        return ""
+    text = getattr(response, "text", None)
+    if isinstance(text, str) and text.strip():
+        return text
+    text = getattr(response, "output_text", None)
+    if isinstance(text, str) and text.strip():
+        return text
+    candidates = getattr(response, "candidates", None)
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            content = getattr(candidate, "content", None)
+            parts = getattr(content, "parts", None) if content else None
+            if isinstance(parts, list):
+                for part in parts:
+                    part_text = getattr(part, "text", None)
+                    if isinstance(part_text, str) and part_text.strip():
+                        return part_text
+    return ""
+
+
+def should_try_next_model(err: Exception) -> bool:
+    lowered = str(err).lower()
+    return any(
+        token in lowered
+        for token in ("not found", "models/", "not supported", "generatecontent", "404")
+    )
 
 
 def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
@@ -371,14 +418,15 @@ def format_llm_output(text: str) -> str:
     if not text:
         return ""
     strip_tokens = ("輸入：", "輸出：", "輸入", "輸出")
-    drop_tokens = ("範例", "模型=", "機率", "閾值")
+    drop_tokens = ("範例", "模型=", "機率", "閾值", "keras", "input", "output")
     text = text.replace("\r", "\n")
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     cleaned: list[str] = []
     for line in lines:
         for token in strip_tokens:
             line = line.replace(token, "")
-        if any(token in line for token in drop_tokens):
+        line_lower = line.lower()
+        if any(token in line_lower for token in drop_tokens):
             continue
         line = re.sub(r"^[-\s\d\.\)]+", "", line).strip()
         if len(line) < 6:
@@ -391,7 +439,8 @@ def format_llm_output(text: str) -> str:
         for part in parts:
             for token in strip_tokens:
                 part = part.replace(token, "")
-            if any(token in part for token in drop_tokens):
+            part_lower = part.lower()
+            if any(token in part_lower for token in drop_tokens):
                 continue
             part = part.strip()
             if len(part) >= 6:
@@ -412,7 +461,24 @@ def format_llm_output(text: str) -> str:
 def explain_gemini_error(err: Exception) -> str:
     message = str(err)
     lowered = message.lower()
-    if "not found" in lowered or "models/" in lowered or "not supported" in lowered or "generatecontent" in lowered:
+    if "packages_distributions" in lowered:
+        return (
+            "當前 Python 版本或 importlib.metadata 不支援 packages_distributions，"
+            "請升級至 Python 3.10+ 或安裝 importlib-metadata。"
+        )
+    if (
+        "cannot import name 'genai'" in lowered
+        or "no module named 'google.genai'" in lowered
+        or "no module named 'google.generativeai'" in lowered
+    ):
+        return "未安裝 Gemini SDK，請確認 requirements.txt 已包含 google-genai 或 google-generativeai。"
+    if (
+        "not found" in lowered
+        or "models/" in lowered
+        or "not supported" in lowered
+        or "generatecontent" in lowered
+        or "404" in lowered
+    ):
         return "Gemini 模型不存在或不支援，請確認模型名稱。"
     if "resource_exhausted" in lowered or "quota" in lowered or "exceeded" in lowered or "429" in lowered:
         return "Gemini 額度不足或請求過多，請檢查帳務方案或稍後再試。"
@@ -426,29 +492,45 @@ def generate_gemini_advice(
     prob: float,
     threshold: float,
     model_name: str,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     try:
-        client = get_gemini_client()
+        backend_type, backend = get_gemini_backend()
     except Exception as e:
-        return None, explain_gemini_error(e)
-    prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
-    for attempt in range(2):
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-            )
-        except Exception as e:
-            return None, explain_gemini_error(e)
-        output_text = getattr(response, "text", "") or ""
-        formatted = format_llm_output(output_text)
-        if formatted:
-            return formatted, None
-        prompt = (
-            build_llm_prompt(has_cactus, prob, threshold, model_name)
-            + "注意：不要出現「輸入」「輸出」「範例」字樣，只要列點。\n"
-        )
-    return None, "LLM 輸出為空"
+        return None, explain_gemini_error(e), None
+    base_prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
+    last_error: Exception | None = None
+    for candidate in GEMINI_MODEL_CANDIDATES:
+        prompt = base_prompt
+        model_error = None
+        for attempt in range(2):
+            try:
+                if backend_type == "genai":
+                    response = backend.models.generate_content(
+                        model=candidate,
+                        contents=prompt,
+                    )
+                else:
+                    response = backend.GenerativeModel(candidate).generate_content(prompt)
+            except Exception as e:
+                model_error = e
+                if should_try_next_model(e):
+                    break
+                return None, explain_gemini_error(e), None
+            output_text = extract_gemini_text(response)
+            formatted = format_llm_output(output_text)
+            if formatted:
+                return formatted, None, candidate
+            if attempt == 0:
+                prompt = (
+                    base_prompt
+                    + "注意：不要出現「輸入」「輸出」「範例」或模型說明，只要列點。\n"
+                )
+        if model_error and should_try_next_model(model_error):
+            last_error = model_error
+            continue
+    if last_error:
+        return None, explain_gemini_error(last_error), None
+    return None, "LLM 輸出為空", None
 
 
 def compute_image_hash(data: bytes | None) -> str | None:
@@ -906,7 +988,7 @@ def main() -> None:
         st.caption("按下「生成改善建議」以產生 LLM 建議（需設定 GEMINI_API_KEY）。")
         api_key = get_gemini_api_key()
         if api_key:
-            st.caption(f"Gemini 已就緒（模型：{GEMINI_MODEL}）。")
+            st.caption(f"Gemini 已就緒（預設模型：{GEMINI_MODEL}）。")
         else:
             st.warning("尚未設定 GEMINI_API_KEY，將改用預設文字。")
 
@@ -919,8 +1001,9 @@ def main() -> None:
         if should_generate_llm:
             advice_text = None
             llm_error = None
+            llm_model = None
             if enable_llm:
-                advice_text, llm_error = generate_gemini_advice(
+                advice_text, llm_error, llm_model = generate_gemini_advice(
                     has_cactus=has_cactus,
                     prob=prediction["prob_display"],
                     threshold=threshold,
@@ -930,13 +1013,20 @@ def main() -> None:
                 advice_text = default_climate_advice(has_cactus)
                 if not enable_llm and not llm_error:
                     llm_error = "LLM 未啟用，已改用預設文字"
-            st.session_state["llm_advice"] = {"text": advice_text, "error": llm_error}
+                llm_model = None
+            st.session_state["llm_advice"] = {
+                "text": advice_text,
+                "error": llm_error,
+                "model": llm_model,
+            }
             st.session_state["llm_meta"] = current_llm_meta
 
         llm_advice = st.session_state.get("llm_advice")
         llm_meta = st.session_state.get("llm_meta")
         if llm_advice and llm_meta == current_llm_meta:
             st.markdown(llm_advice["text"])
+            if llm_advice.get("model"):
+                st.caption(f"Gemini 使用模型：{llm_advice['model']}")
             if llm_advice["error"] and enable_llm:
                 st.caption(f"Gemini 回應失敗，已改用預設文字：{llm_advice['error']}")
             elif llm_advice["error"] and not enable_llm:
