@@ -797,6 +797,50 @@ def generate_gemini_chat_reply(
     return None, "LLM 輸出為空", None
 
 
+def handle_chat_message(
+    user_prompt: str,
+    chat_history: list[dict],
+    *,
+    has_cactus: bool,
+    prob: float,
+    threshold: float,
+    model_name: str,
+    enable_llm: bool,
+    api_key: str | None,
+) -> tuple[list[dict], str | None, str | None]:
+    chat_history = list(chat_history)
+    climate_ok = is_climate_related(user_prompt, chat_history)
+    chat_history.append({"role": "user", "content": user_prompt})
+    if not climate_ok:
+        chat_history.append({"role": "assistant", "content": CLIMATE_REFUSAL_TEXT})
+        return chat_history, None, None
+    reply_text = None
+    llm_error = None
+    llm_model = None
+    if enable_llm and api_key:
+        with st.spinner("Gemini 生成中..."):
+            reply_text, llm_error, llm_model = generate_gemini_chat_reply(
+                history=chat_history,
+                has_cactus=has_cactus,
+                prob=prob,
+                threshold=threshold,
+                model_name=model_name,
+            )
+    else:
+        llm_error = (
+            "尚未設定 GEMINI_API_KEY，已改用預設文字"
+            if not api_key
+            else "LLM 未啟用，已改用預設文字"
+        )
+    if not reply_text:
+        reply_text = default_climate_advice(has_cactus)
+        if not llm_error:
+            llm_error = "LLM 輸出為空"
+        llm_model = None
+    chat_history.append({"role": "assistant", "content": reply_text})
+    return chat_history, llm_error, llm_model
+
+
 def compute_image_hash(data: bytes | None) -> str | None:
     if not data:
         return None
@@ -1251,7 +1295,7 @@ def main() -> None:
 
         st.caption("可在側邊欄調整判定閾值；閾值越低，越容易判定為有仙人掌。")
 
-        st.markdown("#### 氣候變遷防治對話")
+        st.markdown("#### 氣候變遷防治BOT")
         st.caption("僅回覆氣候變遷防治相關問題，離題將不予回答。")
         api_key = get_gemini_api_key()
         if api_key:
@@ -1304,39 +1348,43 @@ def main() -> None:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
+        st.markdown("**推薦提問**")
+        suggestion_prompts = [
+            "這次結果對當地環境有什麼影響？",
+            "有哪些水資源調適措施可以採取？",
+            "如何降低該地區的碳排放？",
+            "要如何監測植被退化趨勢？",
+            "社區可以怎麼參與氣候防治？",
+            "面對乾旱應該採取哪些行動？",
+        ]
+        pending_prompt = None
+        for row_start in range(0, len(suggestion_prompts), 3):
+            cols = st.columns(3)
+            for offset, col in enumerate(cols):
+                idx = row_start + offset
+                if idx >= len(suggestion_prompts):
+                    continue
+                prompt_text = suggestion_prompts[idx]
+                with col:
+                    if st.button(prompt_text, key=f"suggest_{idx}"):
+                        pending_prompt = prompt_text
+
         user_prompt = st.chat_input("輸入氣候變遷防治相關問題")
-        if user_prompt:
-            chat_history = list(chat_history)
-            climate_ok = is_climate_related(user_prompt, chat_history)
-            chat_history.append({"role": "user", "content": user_prompt})
-            if not climate_ok:
-                chat_history.append({"role": "assistant", "content": CLIMATE_REFUSAL_TEXT})
-                st.session_state["chat_error"] = None
-                st.session_state["chat_model"] = None
-            else:
-                reply_text = None
-                llm_error = None
-                llm_model = None
-                if enable_llm and api_key:
-                    with st.spinner("Gemini 生成中..."):
-                        reply_text, llm_error, llm_model = generate_gemini_chat_reply(
-                            history=chat_history,
-                            has_cactus=has_cactus,
-                            prob=prediction["prob_display"],
-                            threshold=threshold,
-                            model_name=prediction["model_name"],
-                        )
-                else:
-                    llm_error = "尚未設定 GEMINI_API_KEY，已改用預設文字" if not api_key else "LLM 未啟用，已改用預設文字"
-                if not reply_text:
-                    reply_text = default_climate_advice(has_cactus)
-                    if not llm_error:
-                        llm_error = "LLM 輸出為空"
-                    llm_model = None
-                chat_history.append({"role": "assistant", "content": reply_text})
-                st.session_state["chat_error"] = llm_error
-                st.session_state["chat_model"] = llm_model
+        message_to_send = pending_prompt or user_prompt
+        if message_to_send:
+            chat_history, llm_error, llm_model = handle_chat_message(
+                message_to_send,
+                chat_history,
+                has_cactus=has_cactus,
+                prob=prediction["prob_display"],
+                threshold=threshold,
+                model_name=prediction["model_name"],
+                enable_llm=enable_llm,
+                api_key=api_key,
+            )
             st.session_state["climate_chat"] = chat_history
+            st.session_state["chat_error"] = llm_error
+            st.session_state["chat_model"] = llm_model
             st.rerun()
 
         chat_error = st.session_state.get("chat_error")

@@ -122,3 +122,4 @@ Q58: Gemini 無法載入/無法 import genai、Python 3.9 packages_distributions
 Q59: google.generativeai 棄用警告?A59: 代表目前走舊版 SDK（多半是 Python 3.9），升級到 Python 3.10+ 可改用 google-genai；若需停留 3.9 可忽略或改為抑制警告。
 Q60: Gemini 模型不存在/不支援仍失敗?A60: 增加 gemini-pro 候選，並在候選失敗時自動 list models 取得可用模型再嘗試。
 Q61: 生成改善建議要改為可對話的 Gemini 聊天框，且離題不回答?A61: 在 LLM 區塊改為聊天介面，加入氣候關鍵字判斷與拒答訊息，支援生成改善建議與追問對話。
+Q62: 氣候變遷防治對話改成 BOT，並提供推薦提問?A62: 將標題改為氣候變遷防治BOT，新增推薦提問按鈕，點選會帶入聊天並觸發回覆。
