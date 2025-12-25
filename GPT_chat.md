@@ -121,3 +121,4 @@ Q57: Gemini ?? 404/?????A57: ??? google-genai SDK???????????? importlib.metadata
 Q58: Gemini 無法載入/無法 import genai、Python 3.9 packages_distributions 問題?A58: 改為 google-genai + google-generativeai 雙路徑，加入模型 fallback 與輸出清理，requirements 補上版本條件與 importlib-metadata。
 Q59: google.generativeai 棄用警告?A59: 代表目前走舊版 SDK（多半是 Python 3.9），升級到 Python 3.10+ 可改用 google-genai；若需停留 3.9 可忽略或改為抑制警告。
 Q60: Gemini 模型不存在/不支援仍失敗?A60: 增加 gemini-pro 候選，並在候選失敗時自動 list models 取得可用模型再嘗試。
+Q61: 生成改善建議要改為可對話的 Gemini 聊天框，且離題不回答?A61: 在 LLM 區塊改為聊天介面，加入氣候關鍵字判斷與拒答訊息，支援生成改善建議與追問對話。
