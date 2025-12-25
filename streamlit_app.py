@@ -30,7 +30,7 @@ MODEL_UPLOAD_DIR = Path(tempfile.gettempdir()) / "cactus_models"
 DEFAULT_MODEL_PATH = OUTPUTS_DIR / "vgg16.keras"
 IMAGE_SIZE = (96, 96)
 DEFAULT_THRESHOLD = 0.5
-OPENAI_MODEL = "gpt-5-nano"
+GEMINI_MODEL = "gemini-1.5-flash"
 HDF5_SIGNATURE = b"\x89HDF\r\n\x1a\n"
 ZIP_SIGNATURES = (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")
 LFS_SIGNATURE = b"version https://git-lfs.github.com/spec/v1"
@@ -318,25 +318,28 @@ def default_climate_advice(has_cactus: bool) -> str:
     )
 
 
-def get_openai_api_key() -> str | None:
-    key = st.session_state.get("openai_api_key")
+def get_gemini_api_key() -> str | None:
+    key = st.session_state.get("gemini_api_key")
     if key:
         return str(key).strip()
     try:
-        if "OPENAI_API_KEY" in st.secrets:
-            return str(st.secrets["OPENAI_API_KEY"])
+        if "GEMINI_API_KEY" in st.secrets:
+            return str(st.secrets["GEMINI_API_KEY"])
+        if "GOOGLE_API_KEY" in st.secrets:
+            return str(st.secrets["GOOGLE_API_KEY"])
     except Exception:
         pass
-    return os.getenv("OPENAI_API_KEY")
+    return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 
-def get_openai_client():
-    api_key = get_openai_api_key()
+def get_gemini_model():
+    api_key = get_gemini_api_key()
     if not api_key:
-        raise ValueError("未設定 OPENAI_API_KEY")
-    from openai import OpenAI
+        raise ValueError("未設定 GEMINI_API_KEY")
+    import google.generativeai as genai
 
-    return OpenAI(api_key=api_key)
+    genai.configure(api_key=api_key)
+    return genai.GenerativeModel(GEMINI_MODEL)
 
 
 def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name: str) -> str:
@@ -349,6 +352,7 @@ def build_llm_prompt(has_cactus: bool, prob: float, threshold: float, model_name
         f"參考：模型={model_name}，機率={prob:.2f}，閾值={threshold:.2f}。\n"
         "請直接輸出建議：\n"
     )
+
 
 def format_llm_output(text: str) -> str:
     if not text:
@@ -363,7 +367,7 @@ def format_llm_output(text: str) -> str:
             line = line.replace(token, "")
         if any(token in line for token in drop_tokens):
             continue
-        line = re.sub(r"^[-•\s\d\.、)）]+", "", line).strip()
+        line = re.sub(r"^[-\s\d\.\)]+", "", line).strip()
         if len(line) < 6:
             continue
         cleaned.append(line)
@@ -392,44 +396,33 @@ def format_llm_output(text: str) -> str:
     return "\n".join(f"- {line}" for line in unique_lines[:5])
 
 
-def explain_openai_error(err: Exception) -> str:
+def explain_gemini_error(err: Exception) -> str:
     message = str(err)
     lowered = message.lower()
-    if "insufficient_quota" in lowered or "exceeded your current quota" in lowered:
-        return "OpenAI 額度不足，請檢查帳務方案或更換可用的 API Key。"
-    if "rate_limit" in lowered or "429" in lowered:
-        return "OpenAI 請求過多，請稍後再試或降低使用頻率。"
+    if "resource_exhausted" in lowered or "quota" in lowered or "exceeded" in lowered or "429" in lowered:
+        return "Gemini 額度不足或請求過多，請檢查帳務方案或稍後再試。"
+    if "api key" in lowered or "unauthorized" in lowered or "permission" in lowered or "403" in lowered or "401" in lowered:
+        return "Gemini API Key 無效或無權限，請確認 key 設定。"
     return message
 
-def generate_openai_advice(
+
+def generate_gemini_advice(
     has_cactus: bool,
     prob: float,
     threshold: float,
     model_name: str,
 ) -> tuple[str | None, str | None]:
     try:
-        client = get_openai_client()
+        model = get_gemini_model()
     except Exception as e:
-        return None, explain_openai_error(e)
+        return None, explain_gemini_error(e)
     prompt = build_llm_prompt(has_cactus, prob, threshold, model_name)
     for attempt in range(2):
         try:
-            response = client.responses.create(
-                model=OPENAI_MODEL,
-                input=prompt,
-                store=False,
-            )
+            response = model.generate_content(prompt)
         except Exception as e:
-            return None, explain_openai_error(e)
-        output_text = getattr(response, "output_text", "") or ""
-        if not output_text and getattr(response, "output", None):
-            parts = []
-            for item in response.output:
-                for content in getattr(item, "content", []) or []:
-                    text = getattr(content, "text", None)
-                    if text:
-                        parts.append(text)
-            output_text = "\n".join(parts)
+            return None, explain_gemini_error(e)
+        output_text = getattr(response, "text", "") or ""
         formatted = format_llm_output(output_text)
         if formatted:
             return formatted, None
@@ -438,6 +431,7 @@ def generate_openai_advice(
             + "注意：不要出現「輸入」「輸出」「範例」字樣，只要列點。\n"
         )
     return None, "LLM 輸出為空"
+
 
 def compute_image_hash(data: bytes | None) -> str | None:
     if not data:
@@ -737,20 +731,20 @@ def main() -> None:
         )
         invert_pred = "vgg" in str(model_path).lower() if model_path else False
 
-        st.markdown("**OpenAI API Key**")
+        st.markdown("**Gemini API Key**")
         st.caption("僅保存在此瀏覽器的 session，重新整理需再輸入；部署建議改用 secrets。")
         api_key_input = st.text_input(
-            "OpenAI API Key",
+            "Gemini API Key",
             type="password",
-            key="openai_api_key_input",
-            placeholder="sk-...",
+            key="gemini_api_key_input",
+            placeholder="AIza...",
             on_change=reset_advice_state,
             label_visibility="collapsed",
         )
         if api_key_input:
-            st.session_state["openai_api_key"] = api_key_input.strip()
+            st.session_state["gemini_api_key"] = api_key_input.strip()
         else:
-            st.session_state.pop("openai_api_key", None)
+            st.session_state.pop("gemini_api_key", None)
 
         enable_llm = True
         show_gradcam = True
@@ -891,12 +885,12 @@ def main() -> None:
             type="primary",
             on_click=request_llm_advice,
         )
-        st.caption("按下「生成改善建議」以產生 LLM 建議（需設定 OPENAI_API_KEY）。")
-        api_key = get_openai_api_key()
+        st.caption("按下「生成改善建議」以產生 LLM 建議（需設定 GEMINI_API_KEY）。")
+        api_key = get_gemini_api_key()
         if api_key:
-            st.caption(f"OpenAI 已就緒（模型：{OPENAI_MODEL}）。")
+            st.caption(f"Gemini 已就緒（模型：{GEMINI_MODEL}）。")
         else:
-            st.warning("尚未設定 OPENAI_API_KEY，將改用預設文字。")
+            st.warning("尚未設定 GEMINI_API_KEY，將改用預設文字。")
 
         current_llm_meta = {
             "prediction_meta": prediction_meta,
@@ -908,7 +902,7 @@ def main() -> None:
             advice_text = None
             llm_error = None
             if enable_llm:
-                advice_text, llm_error = generate_openai_advice(
+                advice_text, llm_error = generate_gemini_advice(
                     has_cactus=has_cactus,
                     prob=prediction["prob_display"],
                     threshold=threshold,
@@ -926,7 +920,7 @@ def main() -> None:
         if llm_advice and llm_meta == current_llm_meta:
             st.markdown(llm_advice["text"])
             if llm_advice["error"] and enable_llm:
-                st.caption(f"OpenAI 回應失敗，已改用預設文字：{llm_advice['error']}")
+                st.caption(f"Gemini 回應失敗，已改用預設文字：{llm_advice['error']}")
             elif llm_advice["error"] and not enable_llm:
                 st.caption(llm_advice["error"])
         else:
