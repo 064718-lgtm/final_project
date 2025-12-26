@@ -55,97 +55,144 @@ A18: 在 README 嵌入 UI_demo0.png、UI_demo1.png，並推送圖片與說明。
 
 Q19: UI 判讀邏輯修正（偵測到＝氣候壓力暫不嚴重；未偵測到＝氣候警示）。
 A19: 更新 streamlit_app 判讀提示與 README 說明，並推送更新。
+
 Q20: 請將與你的對話存入 GPT_chat.md，並回報 Streamlit 部署時 tensorflow==2.10.1 找不到版本。
 A20: 已追加對話記錄，新增 runtime.txt 指定 python-3.10 以支援 tensorflow==2.10.1。
+
 Q21: Streamlit 部署顯示 Python 3.13.9，tensorflow==2.10.1 無相容版本。
 A21: 已更新 requirements.txt 改為 tensorflow==2.20.0，並調整 numpy/protobuf/streamlit/altair 以支援 Python 3.13。
+
 Q22: Streamlit 部署找不到 outputs/cnn.keras，載入模型時失敗。
 A22: 已更新 streamlit_app.py，加入模型上傳與缺檔提示，並改用絕對路徑避免找不到檔案。
+
 Q23: GitHub 已有模型檔，但部署仍顯示 `.keras` 找不到或無法載入。
 A23: 已加入 HDF5 `.keras` 相容處理，可辨識舊格式並轉成 `.h5` 載入。
+
 Q24: 切換 Demo 範例影像時無法進行模型預測。
 A24: 已調整邏輯，Demo 選擇優先於上傳檔，避免被上傳影像覆蓋。
+
 Q25: Demo 影像無法進行預測，且希望用按鈕觸發推論。
 A25: 已改為按「開始預測」才執行推論，並提示需先選影像與模型。
+
 Q26: 請移除「選 Demo 影像」功能。
 A26: 已刪除 Demo 選擇與相關說明，改為僅支援上傳影像。
+
 Q27: 請串接可部署在 Streamlit Cloud 的 LLM，依仙人掌偵測結果產生氣候變遷建議。
 A27: 已加入 OpenAI LLM 生成氣候解讀（可選），並提供預設建議與 Secrets 設定說明。
+
 Q28: 不要使用 API key。
 A28: 已移除 LLM API 呼叫與 openai 依賴，改為本地規則化氣候解讀文字。
+
 Q29: 需要可部署於 Streamlit Cloud 的輕量 LLM，且不使用 API key。
 A29: 已加入本地輕量 LLM（transformers + 小型中文模型）並保留失敗時的預設解讀。
+
 Q30: 上傳影像後會自動預測，開始預測按鈕無效。
 A30: 已改用 session_state 控制，只在按下「開始預測」時推論，且輸入變更會清除舊結果。
+
 Q31: 上傳影像後仍會自動預測，開始預測無效。
 A31: 已加入輸入指紋比對，只有按鈕觸發且輸入一致時才顯示結果。
+
 Q32: 「開始預測」按鈕功能改為 LLM 生成改善建議。
 A32: 已改為自動推論，並將「開始預測」改為觸發 LLM 改善建議。
+
 Q33: 重新設計設定區塊文字層級與可讀性。
 A33: 已調整設定項目標題/說明/元件層級，提升可讀性與理解。
+
 Q34: 請依據 CRISP-DM 生成報告。
 A34: 已新增 CRISPDM.md，涵蓋商業理解到部署與維運建議。
+
 Q35: 氣候解讀預設啟用，按鈕改為「生成改善建議」，且修正上傳後不預測與 SlicingOpLambda 錯誤。
 A35: 已改按鈕文案為「生成改善建議」，並調整模型載入支援 SlicingOpLambda。
+
 Q36: 請在 README 補充 Streamlit 平台操作步驟與功能。
 A36: 已新增 Streamlit 操作步驟與功能說明。
+
 Q37: Streamlit 無 cache_resource 屬性造成錯誤。
 A37: 已新增 cache_resource 相容處理，舊版 Streamlit 會自動改用 st.cache。
+
 Q38: 仍有 cache_resource 造成錯誤。
 A38: 已將本地 LLM 的 cache 裝飾改用 cache_resource 相容函式。
+
 Q39: Streamlit 提示 use_column_width 已棄用。
 A39: 已改為 use_container_width。
+
 Q40: Streamlit 提示 use_container_width 即將棄用。
 A40: 已改為 width="stretch" 以符合新介面。
+
 Q41: 上傳影像後功能卡住。
 A41: 已將模型載入加入快取，並顯示「模型載入中」提示以避免卡住感。
+
 Q42: 推論卡住。
 A42: 已將 Grad-CAM 改為可選項，預設關閉，避免推論被 Grad-CAM 拖慢。
+
 Q43: 模型載入卡住。
 A43: 已移除舊版 Streamlit 的 st.cache，改用 session_state 快取模型與 LLM。
+
 Q44: CNN 模型載入仍卡住。
 A44: 已改優先用架構 + load_weights 載入 CNN/VGG16，避免完整反序列化卡住。
+
 Q45: 模型載入失敗：Unable to synchronously open file (file signature not found)。
 A45: 新增 HDF5 `.keras`/`.h5` 偵測與轉存，優先使用 load_weights，必要時回退完整載入。
+
 Q46: weights load failed: file signature not found。
 A46: 增加 HDF5/zip/LFS 檔頭判斷，對 LFS 顯示 git lfs pull 提示。
+
 Q47: File is not a zip file。
 A47: 加入 h5py 驗證與 `.h5` 快取轉檔，避免 `.keras` 被誤當 zip。
+
 Q48: 隱藏 Grad-CAM/氣候解讀選項，LLM 輸出異常。
 A48: 隱藏選項並預設啟用，補上 LLM 輸出清理與錯誤提示。
+
 Q49: LLM 輸出為空。
 A49: 增加空輸出 fallback 與預設建議訊息。
+
 Q50: 改用 OpenAI API Key 啟用 LLM。
 A50: 改接 OpenAI Responses API，新增 OPENAI_API_KEY 設定與 requirements 更新。
+
 Q51: OpenAI 程式改用 python SDK。
 A51: 依官方範例改為 openai SDK 呼叫並整理說明。
+
 Q52: OpenAI 功能確認與模型載入問題。
 A52: 強化 OpenAI 錯誤處理與模型載入 fallback（.h5/.keras 轉存與 zip 檢查）。
+
 Q53: 需要可設定 OPENAI_API_KEY 的位置。
 A53: 在側邊欄新增 API Key 輸入，支援 session/secrets/env。
+
 Q54: OpenAI 429/額度不足。
 A54: 顯示配額錯誤並改用預設文字。
+
 Q55: 改用 Gemini 取代 OpenAI。
 A55: 替換為 Gemini SDK，改用 GEMINI_API_KEY。
+
 Q56: Gemini 取代 OpenAI 相關調整。
 A56: 移除 OpenAI 依賴，改為 Gemini 生成流程與設定說明。
+
 Q57: Gemini 回應 404/模型不存在。
 A57: 更新為 google-genai SDK，加入模型名稱錯誤處理與提示。
+
 Q58: Gemini 無法載入/無法 import genai、Python 3.9 packages_distributions 問題?
 A58: 改為 google-genai + google-generativeai 雙路徑，加入模型 fallback 與輸出清理，requirements 補上版本條件與 importlib-metadata。
+
 Q59: google.generativeai 棄用警告?
 A59: 代表目前走舊版 SDK（多半是 Python 3.9），升級到 Python 3.10+ 可改用 google-genai；若需停留 3.9 可忽略或改為抑制警告。
+
 Q60: Gemini 模型不存在/不支援仍失敗?
 A60: 增加 gemini-pro 候選，並在候選失敗時自動 list models 取得可用模型再嘗試。
+
 Q61: 生成改善建議要改為可對話的 Gemini 聊天框，且離題不回答?
 A61: 在 LLM 區塊改為聊天介面，加入氣候關鍵字判斷與拒答訊息，支援生成改善建議與追問對話。
+
 Q62: 氣候變遷防治對話改成 BOT，並提供推薦提問?
 A62: 將標題改為氣候變遷防治BOT，新增推薦提問按鈕，點選會帶入聊天並觸發回覆。
+
 Q63: 專案新增/現有功能同步更新到其他 md?
 A63: 已更新 README.md 與 CRISPDM.md，反映 Gemini BOT 對話、推薦提問、API key 設定與部署說明。
+
 Q64: README 專案目標新增氣候變遷防治BOT 說明?
 A64: 已在專案目標補上 BOT 目的與離題拒答敘述。
+
 Q65: GPT_chat.md 出現錯誤字符?
 A65: 已修正 Q45-Q57 的亂碼並統一以 UTF-8 保存。
+
 Q66: Q 和 A 不要在同一行。
 A66: 已將 GPT_chat.md 內同一行的 Q/A 全部拆分為獨立行。
