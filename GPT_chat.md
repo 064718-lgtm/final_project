@@ -131,11 +131,21 @@ Q56: Gemini 取代 OpenAI 相關調整。
 A56: 移除 OpenAI 依賴，改為 Gemini 生成流程與設定說明。
 Q57: Gemini 回應 404/模型不存在。
 A57: 更新為 google-genai SDK，加入模型名稱錯誤處理與提示。
-Q58: Gemini 無法載入/無法 import genai、Python 3.9 packages_distributions 問題?A58: 改為 google-genai + google-generativeai 雙路徑，加入模型 fallback 與輸出清理，requirements 補上版本條件與 importlib-metadata。
-Q59: google.generativeai 棄用警告?A59: 代表目前走舊版 SDK（多半是 Python 3.9），升級到 Python 3.10+ 可改用 google-genai；若需停留 3.9 可忽略或改為抑制警告。
-Q60: Gemini 模型不存在/不支援仍失敗?A60: 增加 gemini-pro 候選，並在候選失敗時自動 list models 取得可用模型再嘗試。
-Q61: 生成改善建議要改為可對話的 Gemini 聊天框，且離題不回答?A61: 在 LLM 區塊改為聊天介面，加入氣候關鍵字判斷與拒答訊息，支援生成改善建議與追問對話。
-Q62: 氣候變遷防治對話改成 BOT，並提供推薦提問?A62: 將標題改為氣候變遷防治BOT，新增推薦提問按鈕，點選會帶入聊天並觸發回覆。
-Q63: 專案新增/現有功能同步更新到其他 md?A63: 已更新 README.md 與 CRISPDM.md，反映 Gemini BOT 對話、推薦提問、API key 設定與部署說明。
-Q64: README 專案目標新增氣候變遷防治BOT 說明?A64: 已在專案目標補上 BOT 目的與離題拒答敘述。
-Q65: GPT_chat.md 出現錯誤字符?A65: 已修正 Q45-Q57 的亂碼並統一以 UTF-8 保存。
+Q58: Gemini 無法載入/無法 import genai、Python 3.9 packages_distributions 問題?
+A58: 改為 google-genai + google-generativeai 雙路徑，加入模型 fallback 與輸出清理，requirements 補上版本條件與 importlib-metadata。
+Q59: google.generativeai 棄用警告?
+A59: 代表目前走舊版 SDK（多半是 Python 3.9），升級到 Python 3.10+ 可改用 google-genai；若需停留 3.9 可忽略或改為抑制警告。
+Q60: Gemini 模型不存在/不支援仍失敗?
+A60: 增加 gemini-pro 候選，並在候選失敗時自動 list models 取得可用模型再嘗試。
+Q61: 生成改善建議要改為可對話的 Gemini 聊天框，且離題不回答?
+A61: 在 LLM 區塊改為聊天介面，加入氣候關鍵字判斷與拒答訊息，支援生成改善建議與追問對話。
+Q62: 氣候變遷防治對話改成 BOT，並提供推薦提問?
+A62: 將標題改為氣候變遷防治BOT，新增推薦提問按鈕，點選會帶入聊天並觸發回覆。
+Q63: 專案新增/現有功能同步更新到其他 md?
+A63: 已更新 README.md 與 CRISPDM.md，反映 Gemini BOT 對話、推薦提問、API key 設定與部署說明。
+Q64: README 專案目標新增氣候變遷防治BOT 說明?
+A64: 已在專案目標補上 BOT 目的與離題拒答敘述。
+Q65: GPT_chat.md 出現錯誤字符?
+A65: 已修正 Q45-Q57 的亂碼並統一以 UTF-8 保存。
+Q66: Q 和 A 不要在同一行。
+A66: 已將 GPT_chat.md 內同一行的 Q/A 全部拆分為獨立行。
