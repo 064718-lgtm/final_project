@@ -21,7 +21,7 @@
 3) GPU 選配：無 GPU 也可執行（自動以 CPU 推論）。
 
 ## 資料集
-- 下載來源（Kaggle）：https://www.kaggle.com/code/shahules/getting-started-with-cnn-and-vgg16
+- 下載來源（Kaggle）：https://www.kaggle.com/competitions/aerial-cactus-identification/data
 - 放置方式：將 `train.zip`、`test.zip` 置於專案根目錄，或解壓成平坦資料夾 `train/`、`test/`（同樣位於根目錄）。  
 - 注意：資料集與大型檔案已列入 `.gitignore`，請勿提交；若曾提交，請自行清理版本史後再推送。
 
