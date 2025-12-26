@@ -60,9 +60,8 @@ streamlit run streamlit_app.py
 
 ### Streamlit 預測結果示意
 - `UI_demo0.png`：Streamlit 預測畫面示意。
-
-- `UI_demo1.png`：Streamlit 預測畫面示意。
 ![UI_demo0](UI_demo0.png)
+- `UI_demo1.png`：Streamlit 預測畫面示意。
 ![UI_demo1](UI_demo1.png)
 
 ## 模型指標（示意）
